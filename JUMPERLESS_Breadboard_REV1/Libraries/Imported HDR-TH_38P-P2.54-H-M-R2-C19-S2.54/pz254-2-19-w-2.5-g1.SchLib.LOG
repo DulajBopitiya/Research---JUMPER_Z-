@@ -1,7 +1,0 @@
-Importer Log Report
-Document: E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\2x19p header\pz254-2-19-w-2.5-g1.kicad_sym
-    Section : Analyze Document from - E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\2x19p header\pz254-2-19-w-2.5-g1.kicad_sym
-        Warning: Unknown child 'generator_version' of 'kicad_symbol_lib'.
-        Warning: Unknown child exclude_from_sim of symbol.
-        Warning: Unknown child embedded_fonts of symbol.
-    EndSection

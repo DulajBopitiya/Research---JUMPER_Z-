@@ -1,7 +1,0 @@
-Importer Log Report
-Document: E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\MCP4822T-ESN\mcp4822t-e_sn.kicad_sym
-    Section : Analyze Document from - E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\MCP4822T-ESN\mcp4822t-e_sn.kicad_sym
-        Warning: Unknown child 'generator_version' of 'kicad_symbol_lib'.
-        Warning: Unknown child exclude_from_sim of symbol.
-        Warning: Unknown child embedded_fonts of symbol.
-    EndSection
