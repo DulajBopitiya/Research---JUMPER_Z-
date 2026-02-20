@@ -1,0 +1,7 @@
+Importer Log Report
+Document: E:\PCB designs\ALTIUM Design\JUMPERLESS_Breadboard_REV1\Libraries\SX1308\sx1308.kicad_sym
+    Section : Analyze Document from - E:\PCB designs\ALTIUM Design\JUMPERLESS_Breadboard_REV1\Libraries\SX1308\sx1308.kicad_sym
+        Warning: Unknown child 'generator_version' of 'kicad_symbol_lib'.
+        Warning: Unknown child exclude_from_sim of symbol.
+        Warning: Unknown child embedded_fonts of symbol.
+    EndSection

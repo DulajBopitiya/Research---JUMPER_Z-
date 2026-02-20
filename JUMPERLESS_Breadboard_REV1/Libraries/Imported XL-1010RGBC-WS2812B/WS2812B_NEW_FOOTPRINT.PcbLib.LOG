@@ -1,0 +1,22 @@
+Importer Log Report
+Document: E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\WS2812B_NEW_FOOTPRINT
+    Section : Analyze Document from - E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\WS2812B_NEW_FOOTPRINT
+        Warning: Unknown child generator_version of footprint.
+        Warning: Unknown child stroke of fp_line.
+        Warning: Unknown child uuid of fp_line.
+        Warning: Unknown child stroke of fp_circle.
+        Warning: Unknown child uuid of fp_circle.
+        Warning: Unknown child thermal_bridge_angle of pad.
+        Warning: Unknown child uuid of pad.
+        Warning: Unknown child thermal_bridge_angle of pad.
+        Warning: Unknown child uuid of pad.
+        Warning: Unknown child thermal_bridge_angle of pad.
+        Warning: Unknown child uuid of pad.
+        Warning: Unknown child thermal_bridge_angle of pad.
+        Warning: Unknown child uuid of pad.
+        Warning: Unknown child embedded_fonts of footprint.
+    EndSection
+    Section : Import Document - E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Libraries\Imported XL-1010RGBC-WS2812B\WS2812B_NEW_FOOTPRINT.PcbLib
+        Section : Component  importing.
+        EndSection
+    EndSection

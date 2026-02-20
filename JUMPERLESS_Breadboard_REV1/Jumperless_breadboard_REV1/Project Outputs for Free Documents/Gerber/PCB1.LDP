@@ -1,0 +1,4 @@
+Layer Pairs Export File for PCB: E:\PROJECTS\SLIIT-PROJECTS\RESEARCH\JUMPERLESS_Breadboard_REV1\Jumperless_breadboard_REV1\PCB1.PcbDoc
+LayersSetName=Top_Bot_Plated_Thru_Holes|DrillFile=pcb1-roundholes-plated.txt|DrillLayers=gtl,gp1,g1,g2,g3,gbl
+LayersSetName=Top_Bot_Plated_Slot_Holes|DrillFile=pcb1-slotholes-plated.txt|DrillLayers=gtl,gp1,g1,g2,g3,gbl
+LayersSetName=Top_Bot_NonPlated_Thru_Holes|DrillFile=pcb1-roundholes-nonplated.txt|DrillLayers=gtl,gp1,g1,g2,g3,gbl
