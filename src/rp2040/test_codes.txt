@@ -1,0 +1,398 @@
+#include <Arduino.h>
+#include <Adafruit_NeoPixel.h>
+
+// ====== SETTINGS ======
+#define LED_PIN      25        // WS2812 data pin (GPIO25)
+#define LED_COUNT    400        // <-- set your LED count
+#define BRIGHTNESS   10        // 0..255 (keep modest for testing)
+
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// ----------------- helpers -----------------
+static inline uint32_t rgb(uint8_t r, uint8_t g, uint8_t b)
+{
+  return strip.Color(r, g, b);
+}
+
+static void clearStrip()
+{
+  strip.clear();
+  strip.show();
+}
+
+// Fade all pixels by 'amount' (0..255). Bigger amount = faster fade.
+static void fadeAll(uint8_t amount)
+{
+  for (uint16_t i = 0; i < strip.numPixels(); i++)
+  {
+    uint32_t c = strip.getPixelColor(i);
+    uint8_t r = (uint8_t)(c >> 16);
+    uint8_t g = (uint8_t)(c >> 8);
+    uint8_t b = (uint8_t)(c);
+
+    r = (r * (255 - amount)) / 255;
+    g = (g * (255 - amount)) / 255;
+    b = (b * (255 - amount)) / 255;
+
+    strip.setPixelColor(i, r, g, b);
+  }
+}
+
+// ----------------- effects -----------------
+
+static void colorWipe(uint32_t color, uint16_t waitMs)
+{
+  for (uint16_t i = 0; i < strip.numPixels(); i++)
+  {
+    strip.setPixelColor(i, color);
+    strip.show();
+    delay(waitMs);
+  }
+}
+
+static void rainbowCycle(uint16_t waitMs)
+{
+  for (uint16_t j = 0; j < 256; j++)
+  {
+    for (uint16_t i = 0; i < strip.numPixels(); i++)
+    {
+      uint8_t pos = (i * 256 / strip.numPixels() + j) & 0xFF;
+
+      uint8_t r, g, b;
+      if (pos < 85) { r = pos * 3; g = 255 - pos * 3; b = 0; }
+      else if (pos < 170) { pos -= 85; r = 255 - pos * 3; g = 0; b = pos * 3; }
+      else { pos -= 170; r = 0; g = pos * 3; b = 255 - pos * 3; }
+
+      strip.setPixelColor(i, r, g, b);
+    }
+    strip.show();
+    delay(waitMs);
+  }
+}
+
+// Theater chase: moving dotted line
+static void theaterChase(uint32_t color, uint16_t waitMs, uint8_t cycles)
+{
+  for (uint8_t c = 0; c < cycles; c++)
+  {
+    for (uint8_t q = 0; q < 3; q++)
+    {
+      strip.clear();
+      for (uint16_t i = q; i < strip.numPixels(); i += 3)
+        strip.setPixelColor(i, color);
+
+      strip.show();
+      delay(waitMs);
+    }
+  }
+}
+
+// Breathing brightness pulse (whole strip)
+static void breathe(uint32_t color, uint16_t stepDelayMs, uint8_t cycles)
+{
+  for (uint8_t k = 0; k < cycles; k++)
+  {
+    for (int b = 0; b <= 255; b += 5)
+    {
+      strip.setBrightness((uint8_t)((BRIGHTNESS * b) / 255));
+      for (uint16_t i = 0; i < strip.numPixels(); i++)
+        strip.setPixelColor(i, color);
+
+      strip.show();
+      delay(stepDelayMs);
+    }
+
+    for (int b = 255; b >= 0; b -= 5)
+    {
+      strip.setBrightness((uint8_t)((BRIGHTNESS * b) / 255));
+      for (uint16_t i = 0; i < strip.numPixels(); i++)
+        strip.setPixelColor(i, color);
+
+      strip.show();
+      delay(stepDelayMs);
+    }
+  }
+  strip.setBrightness(BRIGHTNESS);
+}
+
+// Scanner (Larson/Cylon): dot back and forth with fade trail
+static void scanner(uint32_t color, uint8_t trailFade, uint16_t stepDelayMs, uint8_t cycles)
+{
+  for (uint8_t c = 0; c < cycles; c++)
+  {
+    for (int i = 0; i < (int)strip.numPixels(); i++)
+    {
+      fadeAll(trailFade);
+      strip.setPixelColor(i, color);
+      strip.show();
+      delay(stepDelayMs);
+    }
+    for (int i = (int)strip.numPixels() - 1; i >= 0; i--)
+    {
+      fadeAll(trailFade);
+      strip.setPixelColor(i, color);
+      strip.show();
+      delay(stepDelayMs);
+    }
+  }
+}
+
+// Comet / meteor: bright head with fading tail
+static void comet(uint32_t headColor, uint8_t tailFade, uint16_t stepDelayMs, uint8_t rounds)
+{
+  for (uint8_t r = 0; r < rounds; r++)
+  {
+    clearStrip();
+    for (int pos = 0; pos < (int)strip.numPixels() + 10; pos++)
+    {
+      fadeAll(tailFade);
+      if (pos >= 0 && pos < (int)strip.numPixels())
+        strip.setPixelColor(pos, headColor);
+
+      strip.show();
+      delay(stepDelayMs);
+    }
+  }
+}
+
+// Sparkle: random twinkles
+static void sparkle(uint32_t color, uint16_t runtimeMs, uint16_t sparkleDelayMs)
+{
+  uint32_t start = millis();
+  clearStrip();
+
+  while ((millis() - start) < runtimeMs)
+  {
+    fadeAll(40); // gentle fade
+
+    int p = random((int)strip.numPixels()); // RP2040-safe
+    strip.setPixelColor(p, color);
+
+    strip.show();
+    delay(sparkleDelayMs);
+  }
+}
+
+// ----------------- main -----------------
+void setup()
+{
+  Serial.begin(115200);
+  delay(200);
+
+  // RP2040-safe random seed (no esp_random)
+  randomSeed((uint32_t)micros() ^ (uint32_t)millis());
+
+  strip.begin();
+  strip.setBrightness(BRIGHTNESS);
+  strip.show();
+
+  Serial.println("WS2812B effects demo (RP2040, GPIO25)");
+}
+
+void loop()
+{
+  // Basic wipes     c    
+  colorWipe(rgb(255, 0, 0), 15);
+  colorWipe(rgb(0, 255, 0), 15);
+  colorWipe(rgb(0, 0, 255), 15);
+  colorWipe(rgb(0, 0, 0), 10);
+
+  // Rainbow
+  rainbowCycle(4);
+
+  // Theater chase (warm amber)
+  theaterChase(rgb(255, 180, 0), 70, 25);
+
+  // Breathing pulse (cyan)
+  breathe(rgb(0, 150, 255), 10, 2);
+
+  // Scanner (red)
+  scanner(rgb(255, 0, 0), 50, 12, 4);
+
+  // Comet (green-ish)
+  comet(rgb(0, 255, 120), 55, 15, 3);
+
+  // Sparkle (white twinkle)
+  sparkle(rgb(255, 255, 255), 3000, 30);
+
+  clearStrip();
+  delay(200);
+}
+
+
+
+
+
+//////////////////////////////////
+#include "pin_map/configuration.h"
+// NOTE: constructor order depends on core version.
+// Common one is SerialPIO(txPin, rxPin).
+SerialPIO rpUart(ESP32_RP_COM_TX , ESP32_RP_COM_RX);  // TX=19, RX=18
+
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+  Serial.println("RP2040 USB OK");
+
+  rpUart.begin(115200);
+  Serial.println("PIO UART started on TX=19 RX=18");
+}
+
+void loop() {
+  rpUart.println("TOGGLE");
+  delay(500);
+}
+
+
+
+
+////////////////////////////////////////////////////
+#include "pin_map/configuration.h"
+
+// 2nd CDC instance
+Adafruit_USBD_CDC USBSer1;
+Adafruit_NeoPixel strip(LedMatrix::NUM_LEDS, 25, NEO_GRB + NEO_KHZ800);
+
+void setup()
+{
+
+  USBDevice.setProductDescriptor("Jumper_Z");
+  USBDevice.setManufacturerDescriptor("FabVolt");
+  USBDevice.setSerialDescriptor("0");
+  USBDevice.setID(0x1D51, 0xACAB);
+  USBDevice.addStringDescriptor("Jumper ZERO");
+  USBDevice.addStringDescriptor("FabVolt");
+
+  USBSer1.setStringDescriptor("Jumper_Z USB Serial");
+
+  Serial.begin(115200);  // CDC port 0
+  USBSer1.begin(115200); // CDC port 1
+
+
+
+  // If device was already enumerated, force re-enumeration so the 2nd port appears
+  if (TinyUSBDevice.mounted())
+  {
+    TinyUSBDevice.detach();
+    delay(10);
+    TinyUSBDevice.attach();
+  }
+
+  // Optional: wait until both ports are opened by host (Serial Monitor etc.)
+  while (!Serial || !USBSer1)
+  {
+    delay(10);
+  }
+
+  Serial.println("Hello from CDC0 (Serial)");
+  USBSer1.println("Hello from CDC1 (USBSer1)");
+  strip.begin();
+  strip.setBrightness(20);
+  strip.show();
+
+  // Light middle row 3 col 5 (serpentine mapping)
+  // uint16_t i = LedMatrix::mid1Index(0, 4);
+  // strip.setPixelColor(i, strip.Color(255,255, 0));
+  // strip.show();
+}
+
+void loop()
+{
+
+  // for (int i = 0; i <= 1; i++)
+  // {
+  //   for (int j = 0; j < 25; j++)
+  //   {
+  //     uint16_t index = LedMatrix::topRailIndex(i, j);
+  //     strip.setPixelColor(index, strip.Color(255, 0, 0));
+  //     strip.show();
+  //     delay(100);
+  //   }
+  // }
+
+  // for (int i = 0; i <= 4; i++)
+  // {
+  //   for (int j = 0; j < 30; j++)
+  //   {
+  //     uint16_t index = LedMatrix::mid1Index(i, j);
+  //     strip.setPixelColor(index, strip.Color(255, 0, 255));
+  //     strip.show();
+  //     delay(100);
+  //   }
+  // }
+
+  // for (int i = 0; i <= 4; i++)
+  // {
+  //   for (int j = 0; j < 30; j++)
+  //   {
+  //     uint16_t index = LedMatrix::mid2Index(i, j);
+  //     strip.setPixelColor(index, strip.Color(0, 255, 255));
+  //     strip.show();
+  //     delay(100);
+  //   }
+  // }
+
+  // for (int i = 0; i <= 1; i++)
+  // {
+  //   for (int j = 0; j < 25; j++)
+  //   {
+  //     uint16_t index = LedMatrix::bottomRailIndex(i, j);
+  //     strip.setPixelColor(index, strip.Color(255, 0, 0));
+  //     strip.show();
+  //     delay(100);
+  //   }
+  // }
+  // // Echo between ports (simple test)
+  // while (Serial.available())
+  //   USBSer1.write(Serial.read());
+  // while (USBSer1.available())
+  //   Serial.write(USBSer1.read());
+}
+
+
+
+
+
+//////
+
+#include "configuration.h"
+
+// ---------------- ESP UART (optional) ----------------
+SerialPIO EspUart(ESP32_RP_COM_RX, ESP32_RP_COM_TX);
+// ---------------- LED STRIP ----------------
+
+
+// ==========================================================
+// ======================== SETUP ============================
+// ==========================================================
+
+void setup()
+{
+
+  USB_CDC_Config::USB_CDC_setup();
+  EspUart.begin(115200);
+  LedMatrix::begin(20);   
+  JsonBridge::clearFrame();
+  JsonBridge::begin(LedMatrix::strip());
+}
+
+// ==========================================================
+// ========================= LOOP ============================
+// ==========================================================
+
+void loop()
+{
+
+  if (USB_CDC_Config::USBSer1.available())
+  {
+    JsonDocument req;
+    DeserializationError err = deserializeJson(req, USB_CDC_Config::USBSer1);
+
+    if (!err)
+    {
+      JsonBridge::handle(USB_CDC_Config::USBSer1, req);
+    }
+  }
+
+  JsonBridge::tick();
+}
