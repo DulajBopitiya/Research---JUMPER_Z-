@@ -1,0 +1,15 @@
+# --- GUI Framework ---
+customtkinter==5.2.2         
+Pillow==12.0.0
+
+# --- Hardware & Communication ---
+pyserial==3.5           # Talking to Arduino/ESP32 via USB
+requests==2.31.0        # Fetching Wokwi data or checking CLI updates
+
+# --- Data & Math (For Oscilloscope/Analysis) ---
+#numpy==1.26.2           # Fast processing of hardware telemetry data
+#matplotlib==3.8.2       # Plotting for the Data Analysis/Scope views
+
+# --- Development Tools ---
+#pytest==7.4.3           # Professional testing framework
+#pyinstaller==6.3.0      # For packaging the app into a final .exe
