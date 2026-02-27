@@ -5,8 +5,15 @@
 class LedMatrix
 {
 public:
+    // Small RGB helper used by JsonBridge / mapping helpers
+    struct RGB
+    {
+        uint8_t r, g, b;
+    };
+
     // ===================== CONSTANTS =====================
     static constexpr uint16_t NUM_LEDS = 400;
+    static constexpr uint32_t BLINK_PERIOD_MS = 350;
 
     // ===================== LED STRIP CONTROL =====================
     // Call once in setup()
@@ -61,6 +68,26 @@ public:
     static bool isValidBottom(uint8_t row, uint8_t col);
     static bool isValidMid1(uint8_t row, uint8_t col);
     static bool isValidMid2(uint8_t row, uint8_t col);
+
+    // ===================== LOGICAL -> LED INDEX HELPERS =====================
+    // "T"  : top rails (2x25)
+    // "B"  : bottom rails (2x25)
+    // "M1" : middle section 1 (5x30)
+    // "M2" : middle section 2 (5x30)
+    // Returns -1 on invalid.
+    static int logicalToIndex(const char *sec, int row, int col);
+
+    // Wokwi-ish colors: names like "red"/"green"... or "#RRGGBB".
+    // Unknown -> white.
+    static RGB wokwiColorToRgb(const char *name);
+
+    // ===================== WIRE FRAMEBUFFER (ENDPOINT BLINK) =====================
+    static void frameClear();
+    static void frameResetBlink();
+    static void framePaintPathIdx(int idx, const RGB &c);
+    static void frameMarkEndpointIdx(int idx, const RGB &c);
+    static void frameApplyFull();
+    static void frameTick();
 
 private:
     // IMPORTANT: defined ONLY ONCE in Led_Matrix.cpp

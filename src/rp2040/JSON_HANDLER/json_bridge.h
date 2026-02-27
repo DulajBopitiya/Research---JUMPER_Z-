@@ -1,15 +1,13 @@
-
 #pragma once
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
 
-// Owns JSON protocol + LED frame + blink logic
+// Owns JSON protocol only. LED mapping / blinking lives in LedMatrix.
 namespace JsonBridge
 {
-   
-    // Give module access to your NeoPixel strip (created in main.cpp)
+    // Init (kept for compatibility; strip is owned by LedMatrix)
     void begin(Adafruit_NeoPixel &strip);
 
     // Handle one parsed JSON request and reply to the same stream
@@ -20,5 +18,5 @@ namespace JsonBridge
 
     // Optional helper if you want to clear via code
     void clear();
-    void clearFrame(); // clears internal framebuffers but doesn't update strip immediately
+    void clearFrame(); // clears LedMatrix framebuffer but doesn't update strip immediately
 }

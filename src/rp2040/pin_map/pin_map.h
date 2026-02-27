@@ -6,8 +6,6 @@
 #define ESP32_RP_COM_TX 19
 #define ESP32_RP_COM_RX 18
 
-
-
 #define RGB_LED_PIN 25
 
 //
@@ -17,7 +15,7 @@
 #define CH_RST  24   // RST (ACTIVE HIGH reset)
 
 
-//STB pinmapping
+//Breadboard connected CH STB pinmapping
 #define STB_A 6
 #define STB_B 7
 #define STB_C 8
