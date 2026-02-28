@@ -1,10 +1,4 @@
 #include "configuration.h"
-
-// ---------------- ESP UART (optional) ----------------
-SerialPIO EspUart(ESP32_RP_COM_RX, ESP32_RP_COM_TX);
-// ---------------- LED STRIP ----------------
-
-
 // ==========================================================
 // ======================== SETUP ============================
 // ==========================================================
@@ -13,7 +7,7 @@ void setup()
 {
 
   USB_CDC_Config::USB_CDC_setup();
-  EspUart.begin(115200);
+  // EspUart.begin(115200);
   LedMatrix::begin(20);   
   JsonBridge::clearFrame();
   JsonBridge::begin(LedMatrix::strip());

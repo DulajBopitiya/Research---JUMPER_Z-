@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <Arduino.h>
 
 #define ESP32_RP_COM_TX 19
@@ -15,6 +14,22 @@
 #define CH_RST  24   // RST (ACTIVE HIGH reset)
 
 
+//BRead board numbers not how they are placed
+#define CHIP_A 0
+#define CHIP_B 1
+#define CHIP_C 2
+#define CHIP_D 3
+#define CHIP_E 4
+#define CHIP_F 5
+#define CHIP_G 6
+#define CHIP_H 7
+#define CHIP_I 8
+#define CHIP_J 9
+#define CHIP_K 10
+#define CHIP_L 11
+
+
+
 //Breadboard connected CH STB pinmapping
 #define STB_A 6
 #define STB_B 7
@@ -27,10 +42,10 @@
 
 
 //Special function ch chips STB pins
-#define STB_SP_I 20
-#define STB_SP_J 21
-#define STB_SP_K 22
-#define STB_SP_L 23
+#define STB_I 20
+#define STB_J 21
+#define STB_K 22
+#define STB_L 23
 
 
- 
+//
