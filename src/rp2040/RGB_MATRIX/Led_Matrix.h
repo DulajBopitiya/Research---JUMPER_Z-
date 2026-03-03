@@ -6,10 +6,10 @@ class LedMatrix
 {
 public:
     // Small RGB helper used by JsonBridge / mapping helpers
-    struct RGB
+    typedef struct RGB
     {
         uint8_t r, g, b;
-    };
+    }RGB_t;
 
     // ===================== CONSTANTS =====================
     static constexpr uint16_t NUM_LEDS = 400;

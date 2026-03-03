@@ -10,7 +10,7 @@
 
 
 ///External connections (40 pin header)
-// 
+// this is the exact gpio pin configuration tht connecte dto external pins on the breadboard to esp32 s3 mini 
 #define EXT_RESET 48
 #define EXT_PIN_1 45
 #define EXT_PIN_2 1 //connected via nano header A0

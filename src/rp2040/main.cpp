@@ -1,17 +1,13 @@
-#include "configuration.h"
+#include "JumperZ_SEQ.h"
 // ==========================================================
 // ======================== SETUP ============================
 // ==========================================================
 
 void setup()
 {
-
-  USB_CDC_Config::USB_CDC_setup();
-  // EspUart.begin(115200);
-  LedMatrix::begin(20);   
-  JsonBridge::clearFrame();
-  JsonBridge::begin(LedMatrix::strip());
+    JumperZ_SEQUENCE::JumperZ_Setup();
 }
+
 
 // ==========================================================
 // ========================= LOOP ============================
@@ -20,16 +16,6 @@ void setup()
 void loop()
 {
 
-  if (USB_CDC_Config::USBSer1.available())
-  {
-    JsonDocument req;
-    DeserializationError err = deserializeJson(req, USB_CDC_Config::USBSer1);
+    JumperZ_SEQUENCE::JumperZ_Loop();
 
-    if (!err)
-    {
-      JsonBridge::handle(USB_CDC_Config::USBSer1, req);
-    }
-  }
-
-  JsonBridge::tick();
 }
