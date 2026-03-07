@@ -1,6 +1,8 @@
 #include <Arduino.h>
 
 #define TOGGLE_PIN 40
+#define GPIO_12 12
+#define GPIO_02 2
 
 // Create an explicit handle to UART0
 HardwareSerial RP(0);   // UART0
@@ -12,7 +14,10 @@ void setup() {
   RP.begin(115200);               // UART0 on default U0TXD/U0RXD pins
 
   pinMode(TOGGLE_PIN, OUTPUT);
+  pinMode(GPIO_12 , INPUT_PULLUP);
+  pinMode(GPIO_02 , INPUT_PULLUP);
   digitalWrite(TOGGLE_PIN, LOW);
+  
 
   Serial.println("ESP32-S3 ready (UART0)");
   RP.println("READY");            // handshake (optional but recommended)

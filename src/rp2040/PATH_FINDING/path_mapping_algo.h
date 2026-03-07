@@ -38,6 +38,7 @@ int numberOfDuplicates = 0; // if the paths are redundant (for lower resistance)
 };
 
 extern struct netStruct net[MAX_NETS];
+
 extern char *netNameConstants[MAX_NETS];
 
 struct nanoStatus

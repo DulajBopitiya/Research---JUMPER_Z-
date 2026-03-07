@@ -102,15 +102,15 @@ struct chipStatus_BB_NANO ch[12] = {
      {CHIP_A, CHIP_B, CHIP_C, CHIP_D, CHIP_E, CHIP_F, CHIP_G, CHIP_H}}};
 
 
-///from special chips some of them are connected through external 40pin heders , so there are defined bellow
+///from special chips some of them are connected through external 40pin heders , so there are defined bellow // Note from these two chips some nano pins are also conneted, means the nano pins and external both are c0nnected through this chips
 struct chipStatus_BB_EXT chExt[2]{
 
         // special function chips
     {8, 'I', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                         // y status
-     {NANO_A0, NANO_D1                                                         // NANO Tx
+     {EXT_PIN_2, EXT_PIN_4// NANO Tx also connected to this pin EXT_PIN_4
       ,
-      NANO_A2, NANO_D3, NANO_A4, NANO_D5, NANO_A6, NANO_D7, NANO_D11, NANO_D9, NANO_D13, ESP_REST, DAC0, ADC0, SUPPLY_3V3, GND},
+      EXT_PIN_6 , EXT_PIN_8, EXT_PIN_10, EXT_PIN_12, EXT_PIN_14 , EXT_PIN_16, EXT_PIN_18 , EXT_PIN_20, EXT_PIN_22, ESP_REST, DAC0, ADC0, SUPPLY_3V3, GND},
      {CHIP_A, CHIP_B, CHIP_C, CHIP_D, CHIP_E, CHIP_F, CHIP_G, CHIP_H}},
 
     {9, 'J', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
@@ -326,6 +326,8 @@ SFmapPair sfMappings[200] = {
         {"EXTRA_1", 165,},
         {"EXTRA_2", 166},
         {"EXTRA_3", 167},
+
+        {"ESP_REST" , 168}
         
 
 

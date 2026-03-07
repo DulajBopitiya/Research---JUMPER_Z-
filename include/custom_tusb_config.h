@@ -67,7 +67,7 @@ extern "C" {
 
 #define CFG_TUD_ENDPOINT0_SIZE 64
 
-#define CFG_TUD_CDC 4
+#define CFG_TUD_CDC 4 //4
 #define USB_MANUFACTURER "FabVolt"
 
 #define CFG_TUD_MSC 1

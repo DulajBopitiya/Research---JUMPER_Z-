@@ -291,5 +291,25 @@
   "C_Cpp_Runner.useLeakSanitizer": false,
   "C_Cpp_Runner.showCompilationTime": false,
   "C_Cpp_Runner.useLinkTimeOptimization": false,
-  "C_Cpp_Runner.msvcSecureNoWarnings": false
+  "C_Cpp_Runner.msvcSecureNoWarnings": false,
+  "workbench.colorCustomizations": {
+    "activityBar.activeBackground": "#85d8ae",
+    "activityBar.background": "#85d8ae",
+    "activityBar.foreground": "#15202b",
+    "activityBar.inactiveForeground": "#15202b99",
+    "activityBarBadge.background": "#9f6ed1",
+    "activityBarBadge.foreground": "#15202b",
+    "commandCenter.border": "#15202b99",
+    "sash.hoverBorder": "#85d8ae",
+    "statusBar.background": "#5fcb95",
+    "statusBar.foreground": "#15202b",
+    "statusBarItem.hoverBackground": "#3dba7b",
+    "statusBarItem.remoteBackground": "#5fcb95",
+    "statusBarItem.remoteForeground": "#15202b",
+    "titleBar.activeBackground": "#5fcb95",
+    "titleBar.activeForeground": "#15202b",
+    "titleBar.inactiveBackground": "#5fcb9599",
+    "titleBar.inactiveForeground": "#15202b99"
+  },
+  "peacock.color": "#5fcb95"
 }

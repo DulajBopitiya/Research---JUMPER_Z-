@@ -50,6 +50,12 @@
 #define STB_L 23
 
 
+//Cross and mux uart // form mux this connected to nano header and external headers
+#define MUX_SWITCH 0
+#define MAIN__UART_Rx 16
+#define MAIN_UART_Tx 17
+
+
 //definetions for pathfinding algo stuff
 //not the pin definitions only defines for algo stuff
 
@@ -223,6 +229,8 @@
 #define EXT_PIN_34 105 // connected to analog 5v
 #define EXT_PIN_35 158 // connected via nano header D4
 
+
+#define ESP_RST 168 //inbuild esp reset
 
 //this is connected to esp32s3 mini so when communicating path finding will not intersect with this
 //DO NOT USE THESE PINS IN PATH FINDING ALGO UNLESS YOU KNOW WHAT YOU ARE DOING

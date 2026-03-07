@@ -15,7 +15,7 @@ namespace JumperZ_SEQUENCE
     {
         USB_CDC_Config::USB_CDC_setup();
         // EspUart.begin(115200);
-        LedMatrix::begin(20);
+        LedMatrix::begin(50);
         JsonBridge::clearFrame();
         JsonBridge::begin(LedMatrix::strip());
     }
