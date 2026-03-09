@@ -1,5 +1,5 @@
 # ==========================================
-# JP-PLATFORM: PROFESSIONAL GITIGNORE
+# JUMPER-Z: PROFESSIONAL GITIGNORE
 # ==========================================
 
 # --- 1. Python Environment ---
@@ -19,30 +19,36 @@ include/
 *$py.class
 *.so
 
-# --- 3. App Runtime Data ---
-# These are generated while you run the app (logs, temp data).
-desktop-app/runtime/logs/*.log
-desktop-app/runtime/cache/
-desktop-app/runtime/user/user_config.json
+# --- 3. Development Runtime Data (IMPORTANT) ---
+# We ignore the entire folder we created for development files.
+runtime_dev/
+# Also ignore general logs in case they leak out
 *.log
+logs/
 
-# --- 4. Build & Distribution ---
-# Artifacts created when you freeze the app into an .exe.
-desktop-app/build/
-desktop-app/dist/
+# --- 4. User Configs & Local Data ---
+# We don't want to track your personal "last project" path or settings.
+config/user_config.json
+# But we DO want to track the language settings!
+!config/language_config.json
+
+# --- 5. Build & Distribution ---
+# Artifacts from PyInstaller or other builders
+build/
+dist/
 *.spec
 
-# --- 5. External Tools & Binaries ---
-# We track the 'tools' folder structure, but not the .exe files themselves 
-# (unless you specifically want to version control the arduino-cli).
-desktop-app/tools/*.exe
-desktop-app/tools/*.zip
-desktop-app/tools/data/
-!desktop-app/tools/.gitkeep
+# --- 6. External Tools ---
+# We generally don't track large .exe files in Git. 
+# Better to let the dev download them or use a setup script.
+tools/*.exe
+tools/*.zip
 
-# --- 6. Hardware & Project Files ---
-# Compiled Arduino/ESP32 binaries (the .bin/.elf files).
-desktop-app/projects/**/build/
+# --- 7. Hardware & Project Files ---
+# Ignore the temporary "staging" if it's outside runtime_dev
+staging/
+# Ignore Arduino build artifacts
+projects/**/build/
 *.bin
 *.elf
 *.hex
