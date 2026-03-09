@@ -3,7 +3,7 @@
 ## 🔧 Prerequisites
 - **Python**: 3.12 (Strictly enforced via `.venv`)
 - **CLI Engine**: `arduino-cli` v0.35.x (Stored in `/tools`)
-- **GUI Framework**: [Insert your framework here, e.g., PySide6 or Tkinter]
+- **GUI Framework**: customtkinter
 
 ## 🛠 Project Standards
 1. **Branching**: All work must occur on `feat/` or `fix/` branches.
