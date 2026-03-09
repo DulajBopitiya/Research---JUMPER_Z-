@@ -8,9 +8,6 @@ namespace JumperZ_SEQUENCE
 {
 
 
-
-
-
     void JumperZ_Setup()
     {
         USB_CDC_Config::USB_CDC_setup();
@@ -18,15 +15,13 @@ namespace JumperZ_SEQUENCE
         LedMatrix::begin(50);
         JsonBridge::clearFrame();
         JsonBridge::begin(LedMatrix::strip());
+        NanoHeader::setup();
     }
-
-
-
-
-
 
     void JumperZ_Loop()
     {
+
+       
         // main sequence loop
         if (USB_CDC_Config::USBSer1.available())
         {
@@ -40,5 +35,6 @@ namespace JumperZ_SEQUENCE
         }
 
         JsonBridge::tick();
+        NanoHeader::loop();
     }
 }
