@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 def setup_project():
-    print("🚀 Initializing JP-Platform Professional Environment...")
+    print("🚀 Initializing JUMPER-Z Professional Environment...")
     
     # 1. Define Root Path (relative to this script)
     root = Path(__file__).parent.parent
