@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
+#include "configuration.h"   // for LedMatrix::NUM_LEDS + mapping funcs
 
 // Owns JSON protocol only. LED mapping / blinking lives in LedMatrix.
 namespace JsonBridge

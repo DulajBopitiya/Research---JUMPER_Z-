@@ -6,10 +6,10 @@ PID_TOKEN = "ACAB"
 # Mapping:
 # LOCATION=...:x.0  -> Debug (MI_00)
 # LOCATION=...:x.2  -> Bridge (MI_02)
-DEBUG_LOC_SUFFIX  = "X.0"
-BRIDGE_LOC_SUFFIX = "X.2"
-OSC_LOC_SUFFIX    = "X.4"
-FUNC_LOC_SUFFIX   = "X.6"
+JZ_SERIAL_SUFFIX  = "X.0"
+JZ_NETLIST_SUFFIX = "X.2"
+JZ_OSCILLASCOPE_SUFFIX   = "X.6"
+JZ_TTL_SUFIX   = "X.4"
 
 def _ports():
     import serial.tools.list_ports
@@ -50,19 +50,22 @@ def after_upload(source, target, env):
 
     debug_port = None
     bridge_port = None
+    osc_fun_port = None
+    ttl_port = None
 
     # Wait for Windows re-enumeration after reboot
     t0 = time.time()
     while time.time() - t0 < 30:
-        debug_port  = find_port_by_location(DEBUG_LOC_SUFFIX)
-        bridge_port = find_port_by_location(BRIDGE_LOC_SUFFIX)
-        osc_fun_port = find_port_by_location(OSC_LOC_SUFFIX)
+        debug_port  = find_port_by_location(JZ_SERIAL_SUFFIX)
+        bridge_port = find_port_by_location(JZ_NETLIST_SUFFIX)
+        osc_fun_port = find_port_by_location(JZ_OSCILLASCOPE_SUFFIX)
+        ttl_port = find_port_by_location(JZ_TTL_SUFIX)
         if debug_port:
             break
         time.sleep(0.2)
 
     if not debug_port:
-        print(f"timeout: could not find debug port by LOCATION suffix {DEBUG_LOC_SUFFIX}")
+        print(f"timeout: could not find debug port by LOCATION suffix {JZ_SERIAL_SUFFIX}")
         print("---- PORT SNAPSHOT ----")
         for p in _ports():
             print(p.device, "|", p.description, "|", p.hwid)
@@ -73,5 +76,6 @@ def after_upload(source, target, env):
     print("MONITOR_PORT =", debug_port)
     print("BRIDGE_PORT  =", bridge_port)
     print("OSC_FUN_PORT =", osc_fun_port)
+    print("TTL_PORT" , ttl_port)
 
 env.AddPostAction("upload", after_upload)

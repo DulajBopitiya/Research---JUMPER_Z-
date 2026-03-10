@@ -61,8 +61,8 @@ namespace NanoHeader
         pinMode(NANO_RST_PIN, OUTPUT);
         digitalWrite(NANO_RST_PIN, HIGH);
 
-        Serial1.setTX(NANO_UART_TX);
-        Serial1.setRX(NANO_UART_RX);
+        // Serial1.setTX(NANO_UART_TX);
+        // Serial1.setRX(NANO_UART_RX);
         Serial1.begin(57600);
         last_baud = 57600;
     }
