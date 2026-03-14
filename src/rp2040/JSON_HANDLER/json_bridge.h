@@ -3,21 +3,27 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
-#include "configuration.h"   // for LedMatrix::NUM_LEDS + mapping funcs
+#include "configuration.h"            // LedMatrix + pin_map
+#include "path_mapping_algo.h"        // net[], path[], sfMappings[], chipStatus
+#include "nets_to_chip_connections.h" // netsToChipConnectionsFull(), commitPaths()
+#include "ch446q_config.h"            // sendAllPaths(), clearAllChips()
 
-// Owns JSON protocol only. LED mapping / blinking lives in LedMatrix.
+// JsonBridge — JSON command handler.
+// Owns the wire protocol. LED rendering lives in LedMatrix.
+// CH446Q switching lives in ch446q_config / nets_to_chip_connections.
+//
+// Commands:
+//   {"cmd":"ping"}
+//   {"cmd":"clear"}               — clear LEDs + all CH446Q connections
+//   {"cmd":"wokwi_wires","wires":[...]}  — LED-only visual (unchanged)
+//   {"cmd":"connect","nets":[{"nodes":["NANO_D3","TOP_5"],"color":"#0f0"},…]}
+//                                 — close physical switches + light endpoints
+//   {"cmd":"netlist_query"}       — return current path state
 namespace JsonBridge
 {
-    // Init (kept for compatibility; strip is owned by LedMatrix)
     void begin(Adafruit_NeoPixel &strip);
-
-    // Handle one parsed JSON request and reply to the same stream
     void handle(Stream &replyTo, JsonDocument &req);
-
-    // Non-blocking blink update (call each loop)
     void tick();
-
-    // Optional helper if you want to clear via code
     void clear();
-    void clearFrame(); // clears LedMatrix framebuffer but doesn't update strip immediately
+    void clearFrame();
 }

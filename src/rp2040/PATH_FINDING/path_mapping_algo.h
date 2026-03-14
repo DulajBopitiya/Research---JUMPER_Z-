@@ -11,15 +11,15 @@ uint8_t number; //nets are uint8_t, nodes are int8_t
 
 const char *name; // human readable "Net 3"
 
-int8_t nodes[MAX_NODES] = {};//maybe make this smaller and allow nets to just stay connected currently 64x64 is 4 Kb
+int16_t nodes[MAX_NODES] = {}; // int16_t: node numbers can reach 169 (EXT pins) — int8_t overflows above 127
 
-int8_t bridges[MAX_NODES][2]; //either store them here or in one long array that references the net
+int16_t bridges[MAX_NODES][2]; // pairs of node numbers; must match nodes[] width
 
 int8_t specialFunction = -1; // store #defined number for that special function -1 for regular net
 
 uint8_t intersections[8]; //if this net shares a node with another net, store this here. If it's a regular net, we'll need a function to just merge them into one new net. special functions can intersect though (except Power and Ground), 0x7f is a reserved empty net that nothing and intersect
 
-int8_t doNotIntersectNodes[8]; //if the net tries to share a node with a net that contains any #defined nodes here, it won't connect and throw an error (SUPPLY to GND)
+int16_t doNotIntersectNodes[8]; // node numbers — must match nodes[] width
 
 uint8_t priority = 0; //this isn't implemented - priority = 1 means it will move connections to take the most direct path, priority = 2 means connections will be doubled up when possible, priority = 3 means both
 
@@ -111,7 +111,6 @@ struct chipStatus_BB_EXT
 /// Mapping from breadboard nodes to CH446Q chips. Indexed by bb node number (0-61).
 extern const int bbNodesToChip[62];
 
-// see the comments at the end for a more nicely formatted version that's not in struct initalizers
 enum pathType
 {
     BBtoBB,
@@ -123,13 +122,20 @@ enum pathType
     NANOtoBBL,
     SFtoSF,
     SFtoBBL,
-    BBLtoBBL
+    BBLtoBBL,
+    // External 40-pin header path types
+    BBtoEXT,
+    NANOtoEXT,
+    EXTtoSF,
+    EXTtoEXT,
+    EXTtoBBL
 };
 
 enum nodeType
 {
     BB,
     NANO,
+    EXT,
     SF,
     BBL
 };
@@ -140,7 +146,7 @@ struct pathStruct
     int node2;
     int net;
 
-    int chip[4];
+    int chip[6];
     int x[6];
     int y[6];
     int candidates[3][3]; //[node][candidate]
@@ -165,3 +171,4 @@ extern struct SFmapPair sfMappings[200];
 
 extern struct chipStatus_BB_NANO ch[12];
 extern struct chipStatus_BB_EXT chExt[2];
+

@@ -46,9 +46,42 @@ static inline pio_sm_config spi_ch446_multi_cs_program_get_default_config(uint o
     return c;
 }
 
-//#define MYNAMEISERIC 0 //on the board I sent to eric, the data and clock lines are bodged to GPIO 18 and 19. To allow for using hardware SPI
 #include "hardware/gpio.h"
-static inline void pio_spi_ch446_multi_cs_init(PIO pio, uint sm, uint prog_offs, uint n_bits, float clkdiv, bool cpha, bool cpol,
+#include "pin_map.h"
+
+// Maps CHIP_A..CHIP_L (0..11) to their STB GPIO pin.
+// STB_A-H: GPIO 6-13 (breadboard chips)
+// STB_I-L: GPIO 20-23 (special function chips)
+static inline uint ch446_stb_pin(uint chip) {
+    switch (chip) {
+        case CHIP_A: return STB_A;
+        case CHIP_B: return STB_B;
+        case CHIP_C: return STB_C;
+        case CHIP_D: return STB_D;
+        case CHIP_E: return STB_E;
+        case CHIP_F: return STB_F;
+        case CHIP_G: return STB_G;
+        case CHIP_H: return STB_H;
+        case CHIP_I: return STB_I;
+        case CHIP_J: return STB_J;
+        case CHIP_K: return STB_K;
+        case CHIP_L: return STB_L;
+        default:     return 0xFF; // invalid chip index
+    }
+}
+
+// Call this in your PIO0_IRQ_0 handler after the PIO fires IRQ between words.
+// Assert the STB pulse for the target chip, then clear the PIO IRQ to resume.
+// target_chip: CHIP_A..CHIP_L
+static inline void ch446_stb_pulse(PIO pio, uint sm, uint chip) {
+    uint pin = ch446_stb_pin(chip);
+    gpio_put(pin, 1);
+    __asm volatile("nop\nnop\nnop\nnop"); // short pulse ~4 cycles @ 125MHz = 32ns
+    gpio_put(pin, 0);
+    pio_interrupt_clear(pio, sm);         // clear IRQ flag so PIO continues
+}
+
+static inline void pio_spi_ch446_multi_cs_init(PIO pio, uint sm, uint prog_offs, uint n_bits, float clkdiv,
         uint pin_sck, uint pin_mosi) {
     pio_sm_config c = spi_ch446_multi_cs_program_get_default_config(prog_offs);
     sm_config_set_out_pins(&c, pin_mosi, 1);
@@ -56,21 +89,29 @@ static inline void pio_spi_ch446_multi_cs_init(PIO pio, uint sm, uint prog_offs,
     sm_config_set_sideset_pins(&c, pin_sck);
     sm_config_set_out_shift(&c, false, true, n_bits);
     sm_config_set_clkdiv(&c, clkdiv);
-pio_sm_set_consecutive_pindirs	(pio, sm, pin_mosi, 2, true);
+
+    // Set DAT and CK as outputs
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_mosi, 2, true);
     pio_gpio_init(pio, pin_mosi);
     pio_gpio_init(pio, pin_sck);
-    //pio_set_irqn_source_enabled	(pio,0,pis_sm0_tx_fifo_not_full,true);
-           // The reason for doing interrupt0 + sm:
-        // IRQ sources are enabled per irq flag. Since the irq flag being set depends on the state
-        // machine because of the "0 rel", we want to make sure we're enabling the correct interrupt
-        // source for the state machine the program is loaded into. 
-        pio_set_irq0_source_enabled(pio, (pio_interrupt_source)(pis_interrupt0 + sm), true);
-        // Make sure the interrupt starts cleared. It should already be cleared, so this should
-        // basically be a no-op. I call it defensive programming.
-        pio_interrupt_clear(pio, sm);
-        // Build the configuration for the state machine
-//pio_set_irq0_source_enabled(pio, pis_interrupt0, true);
-irq_set_enabled(PIO0_IRQ_0, true);
+
+    // Init all 12 STB lines as GPIO outputs, idle LOW
+    for (uint chip = CHIP_A; chip <= CHIP_L; chip++) {
+        uint stb = ch446_stb_pin(chip);
+        if (stb == 0xFF) continue;
+        gpio_init(stb);
+        gpio_set_dir(stb, GPIO_OUT);
+        gpio_put(stb, 0);
+    }
+
+    // Enable PIO IRQ0 for this state machine so the CPU ISR can pulse STB.
+    // Use "0 rel" addressing: the IRQ flag index is (0 + sm), so each SM
+    // fires a distinct flag. The CPU ISR must call ch446_stb_pulse() then
+    // clear the flag to let the PIO continue.
+    pio_set_irq0_source_enabled(pio, (pio_interrupt_source)(pis_interrupt0 + sm), true);
+    pio_interrupt_clear(pio, sm);
+    irq_set_enabled(PIO0_IRQ_0, true);
+
     uint entry_point = prog_offs;
     pio_sm_init(pio, sm, entry_point, &c);
     pio_sm_exec(pio, sm, pio_encode_set(pio_x, n_bits - 2));

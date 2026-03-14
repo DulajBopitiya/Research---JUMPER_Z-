@@ -8,29 +8,34 @@ JumperZ is a dual-microcontroller prototyping board firmware. The RP2040 is the 
 
 ## Build Commands
 
-Uses **PlatformIO**. Two environments are defined in `platformio.ini`:
+Uses **PlatformIO** with the earlephilhower Arduino-Pico core. Two environments are defined in `platformio.ini`:
 
 ```bash
 # Build RP2040 firmware
-pio run -e jumper_zero_RP2040
+~/.platformio/penv/Scripts/pio run -e jumper_zero_RP2040
 
 # Build ESP32-S3 firmware
-pio run -e jumper_zero_ESP32S3
+~/.platformio/penv/Scripts/pio run -e jumper_zero_ESP32S3
 
-# Upload RP2040 (uses picotool)
-pio run -e jumper_zero_RP2040 -t upload
+# Upload RP2040 (UF2 drag-drop to drive F:, set in platformio.ini upload_port)
+~/.platformio/penv/Scripts/pio run -e jumper_zero_RP2040 -t upload
 
-# Upload ESP32-S3
-pio run -e jumper_zero_ESP32S3 -t upload
-
-# Monitor serial (RP2040)
-pio device monitor -e jumper_zero_RP2040
+# Monitor serial (RP2040 — CDC0, default Arduino Serial)
+~/.platformio/penv/Scripts/pio device monitor -e jumper_zero_RP2040
 
 # Run tests
-pio test -e jumper_zero_RP2040
+~/.platformio/penv/Scripts/pio test -e jumper_zero_RP2040
 ```
 
-Source files are conditionally compiled per platform using `build_src_filter` in `platformio.ini` — `src/rp2040/` only builds for the RP2040 environment, and `src/esp32s3/` only builds for the ESP32-S3 environment.
+> `pio` is not on PATH on this Windows machine — always use the full path `~/.platformio/penv/Scripts/pio`.
+
+Source files are conditionally compiled per platform using `build_src_filter` — `src/rp2040/` only builds for the RP2040 environment, `src/esp32s3/` only for ESP32-S3. Every new `src/rp2040/` subdirectory must also be added as `-I src/rp2040/<DIR>` in `platformio.ini` `build_flags`.
+
+### PlatformIO Scripts (`scripts/`)
+
+- `apply_patches.py` — pre-build script that patches library sources before compilation
+- `extra_script.py` — post-build script (UF2 output handling)
+- `find_JumperZ_upload.py` — optional helper for auto-detecting upload port (not active by default)
 
 ## Architecture
 
@@ -38,78 +43,187 @@ Source files are conditionally compiled per platform using `build_src_filter` in
 
 ```
 setup() → JumperZ_SEQ::JumperZ_Setup()
-  ├── USB_CDC_Config::USB_CDC_setup()   # 3 USB serial ports via TinyUSB
-  ├── LedMatrix::begin(50)              # 400x WS2812B LEDs
-  └── JsonBridge::begin()
+  ├── USB_CDC_Config::USB_CDC_setup()   # 4 CDC descriptors via TinyUSB
+  ├── LedMatrix::begin(50)              # 400× WS2812B LEDs, brightness=50
+  ├── rgbPatterns::startup()            # Startup animation (comet → name → sparkles)
+  ├── initCH446Q()                      # PIO program load + hardware RST all 12 chips
+  ├── JsonBridge::clearFrame()
+  ├── JsonBridge::begin()
+  └── NanoHeader::setup()
 
 loop() → JumperZ_SEQ::JumperZ_Loop()
-  ├── Read JSON from USBSer1
-  ├── JsonBridge::handle()              # Process "ping", "clear", "wokwi_wires"
-  └── JsonBridge::tick()                # Blink animation at 350ms
+  ├── Read JSON from USBSer1 (if available)
+  ├── JsonBridge::handle(USBSer1, req)  # Dispatch JSON commands
+  ├── JsonBridge::tick()                # Blink animation at 350ms
+  └── NanoHeader::loop()                # TTL bridge — must NOT be commented out
 ```
+
+`configuration.h` is the single include that pulls in all subsystem headers. `JumperZ_SEQ.h` includes it.
 
 ### USB CDC Ports (RP2040)
 
-Three USB serial interfaces over a single USB connection (TinyUSB, 4 CDC descriptors):
-- **USBSer1** — Main JSON control channel ("JumperZ Control")
-- **USBSer2** — Oscilloscope data ("JZ Oscilloscope")
-- **USBSer3** — TTL serial bridge to Arduino Nano ("JZ TTL")
+4 CDC descriptors configured (`CFG_TUD_CDC=4` in `include/custom_tusb_config.h`), but **Windows only enumerates 3** — it drops the last CDC interface. The `addInterface` order in `usb_cdc_config.cpp` is deliberately arranged so the most critical ports land at lower indices:
 
-Custom TinyUSB config lives in `include/custom_tusb_config.h`.
+| CDC Index | Object | Name | COM (typical) | Function |
+|-----------|--------|------|---------------|----------|
+| 0 | `Serial` | "TinyUSB" | COM16 | Default Arduino serial / debug output |
+| 1 | `USBSer1` | "JZ NETSH" | COM14 | Main JSON control channel |
+| 2 | `USBSer3` | "JZ TTL" | COM18 | Arduino Nano TTL bridge |
+| 3 | `USBSer2` | "JZ Oscilloscope" | — | **Dropped by Windows** |
+
+Key constraints:
+- `CFG_TUD_MSC = 0` — MSC must stay disabled; enabling it bloats the descriptor and causes Windows to drop CDC 3.
+- `tud_mounted()` guard required in `NanoHeader::loop()` — CDC calls before USB enumeration completes cause Windows to drop the JZ TTL port.
+- `NanoHeader::loop()` must remain active in `JumperZ_SEQ.cpp`.
 
 ### JSON Command Protocol
 
-Commands are sent as JSON objects to USBSer1:
+Commands are newline-terminated JSON sent to **USBSer1 ("JZ NETSH")**. Each command returns a JSON response on the same port.
 
 | Command | Description |
 |---------|-------------|
 | `{"cmd":"ping"}` | Returns device info and LED count |
-| `{"cmd":"clear"}` | Clears all LEDs |
-| `{"cmd":"wokwi_wires","wires":[...]}` | Renders circuit paths on LED matrix |
+| `{"cmd":"clear"}` | Clears all LEDs + all CH446Q connections |
+| `{"cmd":"wokwi_wires","wires":[...]}` | LED-only visual path render (no switching) |
+| `{"cmd":"connect","nets":[{"nodes":["NANO_D3","TOP_5"],"color":"#0f0"},…]}` | Close physical CH446Q switches + light endpoints |
+| `{"cmd":"netlist_query"}` | Return current path state (capped at 32 paths in JSON) |
+| `{"cmd":"debug"}` | Dump chip map / paths / nets as text, then JSON ACK |
+| `{"cmd":"debug","what":"summary"\|"chips"\|"paths"\|"nets"}` | Scoped debug dump |
 
-For `wokwi_wires`, wire paths are painted steady and endpoints blink at 350ms. Wire points use `["T",col,row]` (top rail), `["B",col,row]` (bottom rail), `["M1",col,row]`, `["M2",col,row]` coordinates.
+Node names in `"connect"` are resolved through `sfMappings[]` in `path_mapping_algo.cpp`. Any name not in that table returns an error in `"err_nodes"`.
+
+Wire path coordinates: `["T", row, col]` (top rail 2×25), `["B", row, col]` (bottom rail 2×25), `["M1", row, col]` (mid1 5×30), `["M2", row, col]` (mid2 5×30). Wire LEDs are painted steady; endpoint LEDs blink at 350 ms.
 
 ### LED Matrix (`src/rp2040/RGB_MATRIX/`)
 
-400 WS2812B LEDs on GPIO 25. Logical layout:
-- **Top rails:** 2 rows × 25 columns
-- **Middle section 1 & 2:** 5 rows × 30 columns each
-- **Bottom rails:** 2 rows × 25 columns
+400 WS2812B LEDs on GPIO 25. `LedMatrix` is a **static-only class** (no instances) backed by a single `Adafruit_NeoPixel s_strip` defined once in `Led_Matrix.cpp`.
 
-`LedMatrix` holds a framebuffer and provides `setLED()`, `showAll()`, and blink endpoint methods. `JsonBridge` maps wire coordinates to LED indices.
+Physical LED layout (contiguous strip index):
+
+| Section | Base | Count | Dims |
+|---------|------|-------|------|
+| Top rails (T) | 0 | 50 | 2 rows × 25 cols |
+| Middle 1 (M1) | 50 | 150 | 5 rows × 30 cols |
+| Middle 2 (M2) | 200 | 150 | 5 rows × 30 cols |
+| Bottom rails (B) | 350 | 50 | 2 rows × 25 cols |
+
+Index formulas:
+- `mid1Index(row, col)  = 50  + col*5 + row`   (column-major)
+- `mid2Index(row, col)  = 200 + col*5 + row`   (column-major)
+- Top/bottom rails use a **snake** layout within each 5-column block.
+
+Key API: `logicalToIndex(sec, row, col)` — maps `"T"/"B"/"M1"/"M2"` + row/col to strip index. `framePaintPathIdx()` / `frameMarkEndpointIdx()` write to the framebuffer; `frameApplyFull()` pushes it to the strip; `frameTick()` handles the 350 ms blink.
+
+### LED Patterns (`src/rp2040/RGB_MATRIX/LED_PATTERNS/`)
+
+`rgbPatterns` namespace — called once at boot, blocks with `delay()`:
+- `startup(strip)` — Phase 1: rainbow comet sweep. Phase 2: `showName()` for 3 s. Phase 3: sparkle fade for 2.5 s.
+- `showName(strip)` — renders "JUMPER-Z" using a 5×3 pixel font. "JUMP" on M1, "ER-Z" on M2, starting at `START_COL=7` with `CHAR_STEP=4` cols per character.
+
+### SPI Handler (`src/rp2040/SPI_HANDLER/`)
+
+- `spi.pio.h` — **project-custom** PIO program for CH446Q multi-CS protocol. Defines `spi_ch446_multi_cs_program`, `pio_spi_ch446_multi_cs_init()`, `ch446_stb_pulse()`. Not a standard SPI program.
+- `pio_spi.h/.cpp` — standard bidirectional PIO-SPI ported from Pico SDK examples.
+
+**Naming hazard:** The Arduino-Pico core's `SoftwareSPI` library ships its own `spi.pio.h` without the CH446Q symbols. `platformio.ini` has `lib_ignore = SoftwareSPI` to prevent shadowing. Do not remove this.
 
 ### Pin Mapping (`src/rp2040/pin_map/pin_map.h`)
 
-249 logical pins defined as an enum and lookup table, covering:
-- Breadboard nodes (TOP_1–30, BOTTOM_1–30)
-- Arduino Nano header (24 pins)
-- External 40-pin connector (EXT_PIN_1–35)
-- Power rails (3.3V, 5V, 8V+/−, GND)
-- Measurements (DAC0/1, ADC0–3, current sense)
-- RP2040 internal GPIOs
+Logical node numbers used throughout the path-finding system:
 
-`src/rp2040/pin_map/configuration.h` includes all subsystem headers.
+| Range | Meaning |
+|-------|---------|
+| 1–30 | Top breadboard rows (TOP_1–TOP_30) |
+| 31–60 | Bottom breadboard rows (BOTTOM_1–BOTTOM_30) |
+| 70–93 | Arduino Nano pins (NANO_D0–NANO_D13, NANO_A0–NANO_A7, NANO_RESET, NANO_AREF) |
+| 100–127 | Special function nodes (GND=100, +3.3V=103, +5V=105, DAC0=106, DAC1=107, ISENSE+=108, ISENSE−=109, ADC0–3=110–113, EMPTY_NET=127) |
+| 129–169 | External 40-pin header (EXT_PIN_1–EXT_PIN_35, EXT_PIN_Tx=168, EXT_PIN_Rx=169) |
+
+`-1` is the universal "no connection / not applicable" sentinel. `EMPTY_NET = 127`.
+
+**Warning:** `MAIN__UART_Rx`/`MAIN_UART_Tx` labels in `pin_map.h` are **inverted** from actual function. Correct: `NANO_UART_TX = GPIO 16` (`RP_UART_TX`), `NANO_UART_RX = GPIO 17` (`RP_UART_RX`).
 
 ### CH446Q Multiplexer (`src/rp2040/CH446Q_HANDLER/`)
 
-The CH446Q analog crosspoint switch chips form the breadboard connectivity matrix. Control via:
-- **DAT:** GPIO 14
-- **CK:** GPIO 15
-- **Reset:** GPIO 24
-- **MUX select:** GPIO 0
+12× CH446Q analog crosspoint switch chips (8Y × 16X each) form the connectivity matrix:
+
+| Chip range | Indices | Function |
+|------------|---------|----------|
+| A–H | 0–7 | Breadboard rows (top half A-D, bottom half E-H) |
+| I–J | 8–9 | Nano header + external 40-pin header |
+| K–L | 10–11 | Special function + bridge/rail |
+
+Serial bus: **DAT** GPIO 14 | **CLK** GPIO 15 | **RST** GPIO 24 (active HIGH) | **STB_A–H** GPIO 6–13 | **STB_I–L** GPIO 20–23.
+
+8-bit command byte (MSB first): `[ AY2 AY1 AY0 | AX3 AX2 AX1 AX0 | DS ]` — Y in upper 3 bits, X in next 4, DS=1 connect / 0 disconnect. Formula: `(y<<5)|(x<<1)|ds`.
+
+`MUX_SWITCH` (GPIO 0) LOW routes UART to the Nano header. `ch[]` (12 entries) and `chExt[]` (2 entries for chips I/J EXT mapping) are the software mirrors of chip state.
+
+### Arduino Nano TTL Bridge (`src/rp2040/NANO_HEADER/`)
+
+Bridges USB CDC (JZ TTL, CDC 2) to Serial1 (GPIO 16/17) for Arduino Nano sketch upload and communication. Reset sequence via CH446Q chip J: connect X15 (GND) and X12 (NANO_RESET) to Y7 → LOW for 100 ms → open switches → HIGH. Both UART directions open immediately after RST release. Uses raw TinyUSB API (`tud_cdc_n_*` with `TTL_CDC_IDX`) for reliability.
 
 ### Path Finding (`src/rp2040/PATH_FINDING/`)
 
-`netStruct` defines circuit netlists with nodes, bridges, power flags, intersection tracking, and LED colors. `nanoStatus` tracks Arduino Nano pin connection states across CH446Q chips I/J/K/L.
+Two files form the full pipeline:
+
+- `path_mapping_algo.h/.cpp` — global state: `net[MAX_NETS]`, `path[MAX_BRIDGES]`, `ch[12]`, `chExt[2]`, `sfMappings[]`, `nano` struct.
+- `nets_to_chip_connections.h/.cpp` — 7-stage pipeline:
+  1. `bridgesToPaths()` — flatten `net[].bridges[][]` into `path[]`
+  2. `findStartAndEndChips()` — populate `path[i].candidates[][]`
+  3. `assignPathType()` — classify `BBtoBB`, `BBtoNANO`, `BBtoSF`, `BBtoEXT`, etc.
+  4. `resolveChipCandidates()` — pick least-crowded chip per node
+  5. `commitPaths()` — fill `path[i].x[]/y[]` switch coordinates
+  6. `resolveAltPaths()` — multi-hop routing for paths needing bridge chips
+  7. `addParallelConnections()` — duplicate BB–BB paths for lower Ron
+
+Call sequence: `netsToChipConnectionsFull()` (runs all 7 stages) → `sendAllPaths(1)`.
+
+Special nets 0–7 are pre-defined (Empty, GND, +5V, +3.3V, DAC0, DAC1, I-Sense+/−) and never cleared. User nets start at index 8.
+
+Reference implementation: `docs/jumperless_netlist_pathmapping_reference.md`.
+
+### Debug Module (`src/rp2040/DEBUG/`)
+
+`JZDebug` namespace — triggered on demand via JSON or direct call:
+
+```cpp
+JZDebug::printAll();           // chip summary + paths + nets + crosspoint grid
+JZDebug::printChipSummary();   // one line per chip: active X/Y pins
+JZDebug::printChipMap();       // full X×Y crosspoint grid with node labels
+JZDebug::printPaths();         // all path[] entries with hops
+JZDebug::printNets();          // all configured nets
+```
+
+All functions accept a `Stream&` (default `Serial`). The `{"cmd":"debug"}` JSON handler sends output back to the caller (USBSer1) so Python can read it directly. Use the Python tool `debug_menu.py` for interactive access.
 
 ### UART Bridge (RP2040 ↔ ESP32-S3)
 
-RP2040 GPIO 16 (TX) / GPIO 17 (RX) → ESP32-S3 GPIO 18 (RX) / GPIO 19 (TX). Simple command protocol: `"TOGGLE\n"` → ESP32-S3 toggles GPIO 40, responds `"OK\n"`.
+RP2040 GPIO 16 (TX) / GPIO 17 (RX) → ESP32-S3 GPIO 18 (RX) / GPIO 19 (TX). Command: `"TOGGLE\n"` → ESP32-S3 toggles GPIO 40, responds `"OK\n"`.
+
+## Python Host Tools (`Research---JUMPER_Z-/PYTHON HACKS/LED FETCHING/`)
+
+These run on the PC and communicate with the board over USB serial.
+
+| File | Purpose |
+|------|---------|
+| `main.py` | Fetch Wokwi diagram, build wire paths, send to board |
+| `debug_menu.py` | Interactive terminal menu for `{"cmd":"debug"}` requests |
+| `bridge_send.py` | Low-level send helpers: `send_wokwi_wires()`, `send_connect_netlist()`, `send_connect_then_wires()` |
+| `netlist.py` | `build_nets()`, `build_jz_nets()` — group Wokwi connections into nets |
+| `format_out.py` | `connections_to_logical_wires()` — convert Wokwi connections to logical wire paths for the board |
+| `wire_path.py` | `expand_manhattan()` — L-path expansion for same-section wires |
+| `logical_map.py` | `wokwi_node_to_logical()` — Wokwi node string → `[section, row, col]` |
+| `led_map.py` | `wokwi_node_to_led()` — Wokwi node → LED strip index |
+| `led_diagnostic.py` | Physical LED layout verification tool (interactive, board must be connected) |
+| `wokwi_fetch.py` | Fetch `diagram.json` from a Wokwi project URL |
+
+Board auto-detection uses VID `1D51` / PID `ACAB`. Bridge port = USB location suffix `X.2` (USBSer1). Cross-section wires (rail↔M1/M2) show endpoints only — no intermediate path. Same-section wires (M1↔M1, M2↔M2) use full Manhattan L-path.
 
 ## Custom Board Definitions
 
 Custom board JSON files in `boards/`:
-- `jumper_z_rp2040.json` — VID `0x2E8A`, PID `0x000A`, 2MB flash, 262KB RAM
+- `jumper_z_rp2040.json` — VID `0x1D51`, PID `0xACAB`, 2MB flash, 262KB RAM
 - `jumper_z_esp32s3.json` — VID `0x303A`, PID `0x1001`, 8MB flash QIO
 
 Variant pin definitions in `Variants/RP2040_VARIANT/` and `Variants/ESP32S3_VARIANT/`.
@@ -119,3 +233,4 @@ Variant pin definitions in `Variants/RP2040_VARIANT/` and `Variants/ESP32S3_VARI
 - **Adafruit NeoPixel** — WS2812B LED strip control
 - **Adafruit TinyUSB Library** — Multi-CDC USB serial
 - **ArduinoJson** — JSON command parsing/serialization
+- `lib_ignore = SoftwareSPI` — prevents shadowing of the project's custom `spi.pio.h`

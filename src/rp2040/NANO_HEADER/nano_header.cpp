@@ -1,4 +1,5 @@
 #include "nano_header.h"
+#include "ch446q_config.h"
 
 // Serial.begin() is NOT called — built-in Serial CDC is excluded from the descriptor.
 // Only 3 user CDCs exist (CFG_TUD_CDC = 3):
@@ -15,6 +16,17 @@ namespace NanoHeader
 
     static bool     rst_active = false;
     static uint32_t rst_timer  = 0;
+    static int      rst_y      = 7;   // Y line chosen for the current reset cycle
+
+    // Find an uncommitted Y line on Chip J to use as the reset bus.
+    // Y0 is the CHIP_L inter-chip bus — skip it.
+    static int findFreeResetY()
+    {
+        for (int y = 1; y < 8; y++) {
+            if (ch[CHIP_J].yStatus[y] == -1) return y;
+        }
+        return 7;   // fallback if all lines are somehow occupied
+    }
 
     static bool cdc_dtr() {
         return tud_cdc_n_get_line_state(TTL_CDC_IDX) & 0x01;
@@ -40,7 +52,9 @@ namespace NanoHeader
     {
         if (!rst_active) return;
         if (millis() - rst_timer >= 100) {
-            digitalWrite(NANO_RST_PIN, HIGH);
+            // Release RESET: open X12 (NANO_RESET) and X15 (GND) on chip J
+            sendXYraw(CHIP_J, 12, rst_y, 0);
+            sendXYraw(CHIP_J, 15, rst_y, 0);
             while (Serial1.available()) Serial1.read();
             rst_active = false;
         }
@@ -48,7 +62,10 @@ namespace NanoHeader
 
     static void start_reset()
     {
-        digitalWrite(NANO_RST_PIN, LOW);
+        rst_y = findFreeResetY();
+        // Assert RESET LOW: tie chip J X12 (NANO_RESET) and X15 (GND) to rst_y
+        sendXYraw(CHIP_J, 15, rst_y, 1);   // GND → rst_y
+        sendXYraw(CHIP_J, 12, rst_y, 1);   // NANO_RESET → rst_y  →  RESET pulled LOW
         rst_timer  = millis();
         rst_active = true;
     }
@@ -58,8 +75,7 @@ namespace NanoHeader
         pinMode(MUX_SWITCH, OUTPUT);
         digitalWrite(MUX_SWITCH, LOW);
 
-        pinMode(NANO_RST_PIN, OUTPUT);
-        digitalWrite(NANO_RST_PIN, HIGH);
+        // RESET driven via chip J matrix (X12=NANO_RESET, X15=GND, Y7 as routing bus)
 
         // Serial1.setTX(NANO_UART_TX);
         // Serial1.setRX(NANO_UART_RX);

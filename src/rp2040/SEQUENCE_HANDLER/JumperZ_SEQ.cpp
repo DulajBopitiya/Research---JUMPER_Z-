@@ -14,6 +14,7 @@ namespace JumperZ_SEQUENCE
         // EspUart.begin(115200);
         LedMatrix::begin(50);
         rgbPatterns::startup(LedMatrix::strip());
+        initCH446Q();
         JsonBridge::clearFrame();
         JsonBridge::begin(LedMatrix::strip());
         NanoHeader::setup();

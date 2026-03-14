@@ -194,9 +194,10 @@ LedMatrix::RGB LedMatrix::wokwiColorToRgb(const char *name)
     if (!strcmp(name, "cyan")) return RGB{0, 255, 255};
     if (!strcmp(name, "white")) return RGB{255, 255, 255};
     if (!strcmp(name, "black")) return RGB{10, 10, 10};   // visible “black”
-    if (!strcmp(name, "gray")) return RGB{80, 80, 80};
+    if (!strcmp(name, "gray")) return RGB{128, 128, 128};
     if (!strcmp(name, "grey")) return RGB{80, 80, 80};
     if (!strcmp(name, "brown")) return RGB{120, 60, 0};
+    if (!strcmp(name, "magenta")) return RGB{255, 0, 255};
 
     return c;
 }

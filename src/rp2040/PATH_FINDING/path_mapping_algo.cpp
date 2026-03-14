@@ -7,11 +7,11 @@ const int bbNodesToChip[62] = {
     CHIP_B,CHIP_B,CHIP_B,CHIP_B,CHIP_B,CHIP_B,CHIP_B, // 9,10,11,12,13,14,15
     CHIP_C,CHIP_C,CHIP_C,CHIP_C,CHIP_C,CHIP_C,CHIP_C, // 16,17,18,19,20,21,22
     CHIP_D,CHIP_D,CHIP_D,CHIP_D,CHIP_D,CHIP_D,CHIP_D, // 23,24,25,26,27,28,29
-    CHIP_L,CHIP_L,CHIP_L, // 30,31,32
-    CHIP_E,CHIP_E,CHIP_E,CHIP_E,CHIP_E,CHIP_E,CHIP_E, // 33,34,35,36,37,38,39
-    CHIP_F,CHIP_F,CHIP_F,CHIP_F,CHIP_F,CHIP_F,CHIP_F, // 40,41,42,43,44,45,46
-    CHIP_G,CHIP_G,CHIP_G,CHIP_G,CHIP_G,CHIP_G,CHIP_G, // 47,48,49,50,51,52,53
-    CHIP_H,CHIP_H,CHIP_H,CHIP_H,CHIP_H,CHIP_H,CHIP_H, // 54,55,56,57,58,59,60
+    CHIP_L,CHIP_L,CHIP_L, // 30,31,32 (TOP_30=BBL, BOTTOM_1=BBL, BOTTOM_2=BBL via Chip L)
+    CHIP_E,CHIP_E,CHIP_E,CHIP_E,CHIP_E,CHIP_E,CHIP_E, // 33,34,35,36,37,38,39 (BOTTOM_3..BOTTOM_9)
+    CHIP_F,CHIP_F,CHIP_F,CHIP_F,CHIP_F,CHIP_F,CHIP_F, // 40,41,42,43,44,45,46 (BOTTOM_10..BOTTOM_16)
+    CHIP_G,CHIP_G,CHIP_G,CHIP_G,CHIP_G,CHIP_G,CHIP_G, // 47,48,49,50,51,52,53 (BOTTOM_17..BOTTOM_23)
+    CHIP_H,CHIP_H,CHIP_H,CHIP_H,CHIP_H,CHIP_H,CHIP_H, // 54,55,56,57,58,59,60 (BOTTOM_24..BOTTOM_30)
 };
 
 
@@ -59,22 +59,22 @@ struct chipStatus_BB_NANO ch[12] = {
     {4, 'E', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                         // y status
      {CHIP_A, CHIP_I, CHIP_B, CHIP_B, CHIP_C, CHIP_C, CHIP_D, CHIP_D, CHIP_J, CHIP_K, CHIP_F, CHIP_F, CHIP_G, CHIP_G, CHIP_H, CHIP_H},
-     {CHIP_L, BOTTOM_2, BOTTOM_3, BOTTOM_4, BOTTOM_5, BOTTOM_6, BOTTOM_7, BOTTOM_8}},
+     {CHIP_L, BOTTOM_3, BOTTOM_4, BOTTOM_5, BOTTOM_6, BOTTOM_7, BOTTOM_8, BOTTOM_9}},
 
     {5, 'F', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                         // y status
      {CHIP_A, CHIP_A, CHIP_B, CHIP_I, CHIP_C, CHIP_C, CHIP_D, CHIP_D, CHIP_E, CHIP_E, CHIP_J, CHIP_K, CHIP_G, CHIP_G, CHIP_H, CHIP_H},
-     {CHIP_L, BOTTOM_9, BOTTOM_10, BOTTOM_11, BOTTOM_12, BOTTOM_13, BOTTOM_14, BOTTOM_15}},
+     {CHIP_L, BOTTOM_10, BOTTOM_11, BOTTOM_12, BOTTOM_13, BOTTOM_14, BOTTOM_15, BOTTOM_16}},
 
     {6, 'G', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                         // y status
      {CHIP_A, CHIP_A, CHIP_B, CHIP_B, CHIP_C, CHIP_I, CHIP_D, CHIP_D, CHIP_E, CHIP_E, CHIP_F, CHIP_F, CHIP_J, CHIP_K, CHIP_H, CHIP_H},
-     {CHIP_L, BOTTOM_16, BOTTOM_17, BOTTOM_18, BOTTOM_19, BOTTOM_20, BOTTOM_21, BOTTOM_22}},
+     {CHIP_L, BOTTOM_17, BOTTOM_18, BOTTOM_19, BOTTOM_20, BOTTOM_21, BOTTOM_22, BOTTOM_23}},
 
     {7, 'H', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                         // y status
      {CHIP_A, CHIP_A, CHIP_B, CHIP_B, CHIP_C, CHIP_C, CHIP_D, CHIP_I, CHIP_E, CHIP_E, CHIP_F, CHIP_F, CHIP_G, CHIP_G, CHIP_J, CHIP_K},
-     {CHIP_L, BOTTOM_23, BOTTOM_24, BOTTOM_25, BOTTOM_26, BOTTOM_27, BOTTOM_28, BOTTOM_29}},
+     {CHIP_L, BOTTOM_24, BOTTOM_25, BOTTOM_26, BOTTOM_27, BOTTOM_28, BOTTOM_29, BOTTOM_30}},
 
     // special function chips
     {8, 'I', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
@@ -98,7 +98,7 @@ struct chipStatus_BB_NANO ch[12] = {
 
     {11, 'L', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                          // y status
-     {ISENSE_MINUS, ISENSE_PLUS, ADC0, ADC1, ADC2, ADC3, DAC1, DAC0, TOP_1, TOP_30, BOTTOM_1, BOTTOM_30, RP_UART_TX, RP_UART_RX, SUPPLY_5V, RP_GPIO_0},
+     {ISENSE_MINUS, ISENSE_PLUS, ADC0, ADC1, ADC2, ADC3, DAC1, DAC0, TOP_1, TOP_30, BOTTOM_2, BOTTOM_1, RP_UART_TX, RP_UART_RX, SUPPLY_5V, RP_GPIO_0},
      {CHIP_A, CHIP_B, CHIP_C, CHIP_D, CHIP_E, CHIP_F, CHIP_G, CHIP_H}}};
 
 
@@ -115,9 +115,9 @@ struct chipStatus_BB_EXT chExt[2]{
 
     {9, 'J', {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // x status
      {-1, -1, -1, -1, -1, -1, -1, -1},                                         // y status
-     {NANO_D0                                                                  // NANO Rx
+     {EXT_PIN_32  // NANO Rx also connected to this pin EXT_PIN_32                                                               // NANO Rx
       ,
-      NANO_A1, NANO_D2, NANO_A3, NANO_D4, NANO_A5, NANO_D6, NANO_A7, NANO_D8, NANO_D10, NANO_D12, NANO_AREF, NANO_RESET, ADC1, SUPPLY_5V, GND},
+      EXT_PIN_28, EXT_PIN_30, -1, EXT_PIN_35, EXT_PIN_33, EXT_PIN_31, EXT_PIN_29, EXT_PIN_27 , EXT_PIN_23, EXT_PIN_21, EXT_PIN_19, EXT_PIN_17, ADC1, SUPPLY_5V, GND},
      {CHIP_A, CHIP_B, CHIP_C, CHIP_D, CHIP_E, CHIP_F, CHIP_G, CHIP_H}},
 
 };
@@ -327,9 +327,21 @@ SFmapPair sfMappings[200] = {
         {"EXTRA_2", 166},
         {"EXTRA_3", 167},
 
-        {"ESP_REST" , 168}
-        
+        {"ESP_REST" , 168},
 
+        // Breadboard top rows: "TOP_1".."TOP_30" → node numbers 1..30
+        {"TOP_1",  1},  {"TOP_2",  2},  {"TOP_3",  3},  {"TOP_4",  4},  {"TOP_5",  5},
+        {"TOP_6",  6},  {"TOP_7",  7},  {"TOP_8",  8},  {"TOP_9",  9},  {"TOP_10", 10},
+        {"TOP_11", 11}, {"TOP_12", 12}, {"TOP_13", 13}, {"TOP_14", 14}, {"TOP_15", 15},
+        {"TOP_16", 16}, {"TOP_17", 17}, {"TOP_18", 18}, {"TOP_19", 19}, {"TOP_20", 20},
+        {"TOP_21", 21}, {"TOP_22", 22}, {"TOP_23", 23}, {"TOP_24", 24}, {"TOP_25", 25},
+        {"TOP_26", 26}, {"TOP_27", 27}, {"TOP_28", 28}, {"TOP_29", 29}, {"TOP_30", 30},
 
-
+        // Breadboard bottom rows: "BOTTOM_1".."BOTTOM_30" → node numbers 31..60
+        {"BOTTOM_1",  31}, {"BOTTOM_2",  32}, {"BOTTOM_3",  33}, {"BOTTOM_4",  34}, {"BOTTOM_5",  35},
+        {"BOTTOM_6",  36}, {"BOTTOM_7",  37}, {"BOTTOM_8",  38}, {"BOTTOM_9",  39}, {"BOTTOM_10", 40},
+        {"BOTTOM_11", 41}, {"BOTTOM_12", 42}, {"BOTTOM_13", 43}, {"BOTTOM_14", 44}, {"BOTTOM_15", 45},
+        {"BOTTOM_16", 46}, {"BOTTOM_17", 47}, {"BOTTOM_18", 48}, {"BOTTOM_19", 49}, {"BOTTOM_20", 50},
+        {"BOTTOM_21", 51}, {"BOTTOM_22", 52}, {"BOTTOM_23", 53}, {"BOTTOM_24", 54}, {"BOTTOM_25", 55},
+        {"BOTTOM_26", 56}, {"BOTTOM_27", 57}, {"BOTTOM_28", 58}, {"BOTTOM_29", 59}, {"BOTTOM_30", 60},
 };
