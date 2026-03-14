@@ -67,13 +67,15 @@ extern "C" {
 
 #define CFG_TUD_ENDPOINT0_SIZE 64
 
-#define CFG_TUD_CDC 4 //4
+#define CFG_TUD_CDC 4
 #define USB_MANUFACTURER "FabVolt"
 
-#define CFG_TUD_MSC 1
+#define CFG_TUD_MSC 0
 #define CFG_TUD_HID 0
 #define CFG_TUD_MIDI 0
 #define CFG_TUD_VENDOR 0
+#define CFG_TUD_VIDEO 0
+#define CFG_TUD_VIDEO_STREAMING 0
 #define CFG_TUD_JUMPERLESS 0
 
 // max is 64

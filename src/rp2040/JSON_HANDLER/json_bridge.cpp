@@ -1,5 +1,5 @@
 #include "json_bridge.h"
-#include "configuration.h"   // for LedMatrix::NUM_LEDS + mapping funcs
+
 
 namespace JsonBridge
 {

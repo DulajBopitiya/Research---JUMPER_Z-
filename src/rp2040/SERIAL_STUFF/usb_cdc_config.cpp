@@ -11,23 +11,28 @@ namespace USB_CDC_Config
     USBDevice.setProductDescriptor("Jumper_Z");
     USBDevice.setManufacturerDescriptor("FabVolt");
     USBDevice.setSerialDescriptor("0");
-    USBDevice.setID(0x1D51, 0xACAB);
+    USBDevice.setID(0x1D51, 0xACAB); // changed from 0xACAB to bust Windows descriptor cache
     USBDevice.addStringDescriptor("Jumper ZERO");
     USBDevice.addStringDescriptor("FabVolt");
 
-    USBSer1.setStringDescriptor("Jumper_Z USB Serial");
-    USBSer2.setStringDescriptor("JZ Oscilloscope");
-    USBSer3.setStringDescriptor("JZ FunctionGen");
-
-    // IMPORTANT for multiple CDCs on TinyUSB:
-    TinyUSBDevice.addInterface(USBSer1);
-    TinyUSBDevice.addInterface(USBSer2);
-    TinyUSBDevice.addInterface(USBSer3);
-
-    Serial.begin(baud);
+    // CDC 0 = Serial "JZ Serial"  — added automatically by framework before setup()
+    // CDC 1 = USBSer1 "JZ NETSH"
+    // CDC 2 = USBSer3 "JZ TTL"   ← Nano bridge (TTL_CDC_IDX = 2)
+    // CDC 3 = USBSer2 "JZ Oscilloscope"
+    //
+    // Set string BEFORE begin() so the patched begin() keeps it instead of
+    // overriding with "JZ Serial". Do NOT call TinyUSBDevice.addInterface()
+    // directly — begin() handles that. Calling both causes duplicate descriptors.
+    USBSer1.setStringDescriptor("JZ NETSH");
     USBSer1.begin(baud);
-    USBSer2.begin(baud);
+
+    USBSer3.setStringDescriptor("JZ TTL");
     USBSer3.begin(baud);
+
+    USBSer2.setStringDescriptor("JZ Oscilloscope");
+    USBSer2.begin(baud);
+
+    Serial.begin(baud); // no-op: framework already called Serial.begin() before setup()
   }
 
   void USB_CDC_loop()

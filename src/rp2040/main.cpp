@@ -1,136 +1,21 @@
-// #include "JumperZ_SEQ.h"
-// // ==========================================================
-// // ======================== SETUP ============================
-// // ==========================================================
+#include "JumperZ_SEQ.h"
+// ==========================================================
+// ======================== SETUP ============================
+// ==========================================================
 
-// void setup()
-// {
-//     JumperZ_SEQUENCE::JumperZ_Setup();
-// }
-
-// // ==========================================================
-// // ========================= LOOP ============================
-// // ==========================================================
-
-// void loop()
-// {
-
-//     JumperZ_SEQUENCE::JumperZ_Loop();
-
-// }
-
-
-#include <Arduino.h>
-#include "Adafruit_TinyUSB.h"
-#include "tusb.h"
-
-#define UART_TX_PIN   16
-#define UART_RX_PIN   17
-#define NANO_RST_PIN  1
-#define MUX_SEL_PIN   0
-
-static uint8_t  buf[256];
-static bool     last_dtr    = false;
-static uint32_t last_baud   = 0;
-
-static bool     rst_active  = false;
-static bool     rst_phase2  = false;
-static uint32_t rst_timer   = 0;
-
-static bool     cdc_dtr()  { return tud_cdc_n_get_line_state(0) & 0x01; }
-static uint32_t cdc_baud() {
-  cdc_line_coding_t lc;
-  tud_cdc_n_get_line_coding(0, &lc);
-  return lc.bit_rate;
+void setup()
+{
+    JumperZ_SEQUENCE::JumperZ_Setup();
 }
 
-static void sync_baud(uint32_t baud) {
-  if (baud == last_baud || baud < 300) return;
-  last_baud = baud;
-  Serial1.end();
-  Serial1.setTX(UART_TX_PIN);
-  Serial1.setRX(UART_RX_PIN);
-  Serial1.begin(baud);
+// ==========================================================
+// ========================= LOOP ============================
+// ==========================================================
+
+void loop()
+{
+
+    JumperZ_SEQUENCE::JumperZ_Loop();
+
 }
 
-static void handle_reset_sm() {
-  if (!rst_active) return;
-  uint32_t now = millis();
-  if (!rst_phase2) {
-    if (now - rst_timer >= 1) {
-      digitalWrite(NANO_RST_PIN, HIGH);
-      rst_timer  = now;
-      rst_phase2 = true;
-    }
-  } else {
-    if (now - rst_timer >= 250) {
-      while (Serial1.available()) Serial1.read();
-      rst_active = false;
-      rst_phase2 = false;
-    }
-  }
-}
-
-static void start_reset() {
-  digitalWrite(NANO_RST_PIN, LOW);
-  rst_timer  = millis();
-  rst_phase2 = false;
-  rst_active = true;
-}
-
-void setup() {
-  pinMode(MUX_SEL_PIN, OUTPUT);
-  digitalWrite(MUX_SEL_PIN, LOW);
-
-  pinMode(NANO_RST_PIN, OUTPUT);
-  digitalWrite(NANO_RST_PIN, HIGH);
-
-  // Initial baud — will sync to whatever avrdude sets
-  Serial1.setTX(UART_TX_PIN);
-  Serial1.setRX(UART_RX_PIN);
-  Serial1.begin(57600);
-  last_baud = 57600;
-}
-
-void loop() {
-  handle_reset_sm();
-
-  // Baud sync
-  uint32_t new_baud = cdc_baud();
-  sync_baud(new_baud);
-
-  // *** RISING edge (0→1) triggers reset ***
-  bool dtr = cdc_dtr();
-  if (dtr && !last_dtr) {
-    sync_baud(cdc_baud());
-    start_reset();
-  }
-  last_dtr = dtr;
-
-  // USB → Nano (hold while RST LOW)
-  if (!rst_active || rst_phase2) {
-    int n = (int)tud_cdc_n_available(0);
-    if (n > 0) {
-      if (n > (int)sizeof(buf)) n = sizeof(buf);
-      n = tud_cdc_n_read(0, buf, n);
-      if (n > 0) Serial1.write(buf, n);
-    }
-  } else {
-    // drain USB during RST LOW
-    uint8_t tmp[64];
-    while (tud_cdc_n_available(0)) tud_cdc_n_read(0, tmp, sizeof(tmp));
-  }
-
-  // Nano → USB
-  if (!rst_active) {
-    int n = Serial1.available();
-    if (n > 0) {
-      if (n > (int)sizeof(buf)) n = sizeof(buf);
-      n = Serial1.readBytes((char*)buf, n);
-      if (n > 0) {
-        tud_cdc_n_write(0, buf, n);
-        tud_cdc_n_write_flush(0);
-      }
-    }
-  }
-}

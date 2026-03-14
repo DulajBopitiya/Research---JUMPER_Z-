@@ -8,25 +8,21 @@ namespace JumperZ_SEQUENCE
 {
 
 
-
-
-
     void JumperZ_Setup()
     {
         USB_CDC_Config::USB_CDC_setup();
         // EspUart.begin(115200);
         LedMatrix::begin(50);
+        rgbPatterns::startup(LedMatrix::strip());
         JsonBridge::clearFrame();
         JsonBridge::begin(LedMatrix::strip());
+        NanoHeader::setup();
     }
-
-
-
-
-
 
     void JumperZ_Loop()
     {
+
+       
         // main sequence loop
         if (USB_CDC_Config::USBSer1.available())
         {
@@ -40,5 +36,6 @@ namespace JumperZ_SEQUENCE
         }
 
         JsonBridge::tick();
+        NanoHeader::loop();
     }
 }

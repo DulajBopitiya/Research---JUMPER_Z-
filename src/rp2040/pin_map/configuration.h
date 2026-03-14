@@ -9,6 +9,8 @@
 #include "usb_cdc_config.h"
 #include "uart_main_bridge.h"
 #include "json_bridge.h"
+#include "nano_header.h"
+#include "../RGB_MATRIX/LED_PATTERNS/led_patterns.h"
 
 
 

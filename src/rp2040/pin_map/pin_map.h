@@ -51,9 +51,12 @@
 
 
 //Cross and mux uart // form mux this connected to nano header and external headers
+
+//this is temporaray
+// GPIO 1: Nano reset line (active LOW pulse triggers bootloader entry)
+#define NANO_RST_PIN  1
 #define MUX_SWITCH 0
-#define MAIN__UART_Rx 16
-#define MAIN_UART_Tx 17
+
 
 
 //definetions for pathfinding algo stuff
