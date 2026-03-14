@@ -1,6 +1,6 @@
-from led_map import wokwi_node_to_led
-from wire_path import expand_manhattan
-from logical_map import wokwi_node_to_logical, fmt_logical
+from src.logic.wokwi_pipeline.led_map import wokwi_node_to_led
+from src.logic.wokwi_pipeline.wire_path import expand_manhattan
+from src.logic.wokwi_pipeline.logical_map import wokwi_node_to_logical, fmt_logical
 
 def _nodes_to_logical_points(nodes, drop_unmapped=True):
     """

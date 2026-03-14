@@ -17,9 +17,9 @@ from typing import Any, Dict, Final
 from src.core.state_ownership import STATE_OWNERSHIP
 from src.core.state_keys import StateKeys
 from src.core.event_bus import event_bus
-from src.core.events import Events
+from src.core.events import State
 from src.core.logging_config import get_logger
-from src.core.logging_event_registry import CR
+from src.core.log_events import L
 
 from src.core.config import APP_VERSION as CONFIG_APP_VERSION
 
@@ -52,7 +52,7 @@ class AppState:
         if expected_owner and expected_owner != owner:
             logger.error("State ownership violation: %s tried to set %s owned by %s",
                          owner, key, expected_owner, 
-                         extra={"event_id": CR.STATE_VIOLATION})
+                         extra={"event_id": L.CORE.STATE_VIOLATION})
             return
         
         with self._lock: 
@@ -64,14 +64,14 @@ class AppState:
 
             self._data[key] = value
             logger.debug("AppState.set: %s = %r (old=%r)", key, value, old_value, 
-                         extra={"event_id": CR.STATE_CHANGED})
+                         extra={"event_id": L.CORE.STATE_CHANGED})
 
         # Emit after releasing lock (to avoid deadlocks)
         try:
-            event_bus.emit(Events.State.STATE_CHANGED, key=key, value=value, old_value=old_value)
+            event_bus.emit(State.STATE_CHANGED, key=key, value=value, old_value=old_value)
         except Exception:
             logger.exception("AppState: error emitting set for %s", key,
-                             extra={"event_id": CR.EVENT_HANDLER_ERROR})
+                             extra={"event_id": L.CORE.EVENT_HANDLER_ERROR})
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._lock:
@@ -82,7 +82,7 @@ class AppState:
         if expected_owner and expected_owner != owner and owner != "AppController":
             logger.error("State deletion violation: %s tried to delete %s (owner=%s)",
                 owner, key, expected_owner,
-                extra={"event_id": CR.STATE_VIOLATION},)
+                extra={"event_id": L.CORE.STATE_VIOLATION},)
             return
         
         with self._lock:
@@ -90,28 +90,28 @@ class AppState:
             old_value = self._data.get(key)
             if existed:
                 del self._data[key]
-                logger.debug("AppState.delete: removed %s", key, extra={"event_id": CR.STATE_CHANGED})
+                logger.debug("AppState.delete: removed %s", key, extra={"event_id": L.CORE.STATE_CHANGED})
 
         if existed:
             try:
-                event_bus.emit(Events.State.STATE_CHANGED, key=key, value=None, old_value=old_value)
+                event_bus.emit(State.STATE_CHANGED, key=key, value=None, old_value=old_value)
             except Exception:
-                logger.exception("AppState: error emitting delete for %s", key, extra={"event_id": CR.EVENT_HANDLER_ERROR})
+                logger.exception("AppState: error emitting delete for %s", key, extra={"event_id": L.CORE.EVENT_HANDLER_ERROR})
 
     def clear(self, *, owner: str) -> None:
         if owner != "AppController":
             logger.error("State clear violation: only AppController can clear state (attempt by %s)", 
-                         owner, extra={"event_id": CR.STATE_VIOLATION},)
+                         owner, extra={"event_id": L.CORE.STATE_VIOLATION},)
             return
         
         with self._lock:
             self._data.clear()
-            logger.debug("AppState.clear: all keys removed", extra={"event_id": CR.STATE_RESET})
+            logger.debug("AppState.clear: all keys removed", extra={"event_id": L.CORE.STATE_RESET})
 
         try:
-            event_bus.emit(Events.State.STATE_CHANGED, key=None, value=None, old_value=None)
+            event_bus.emit(State.STATE_CHANGED, key=None, value=None, old_value=None)
         except Exception:
-            logger.exception("AppState: error emitting clear", extra={"event_id": CR.EVENT_HANDLER_ERROR})
+            logger.exception("AppState: error emitting clear", extra={"event_id": L.CORE.EVENT_HANDLER_ERROR})
 
     def all(self) -> Dict[str, Any]:
         with self._lock:

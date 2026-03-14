@@ -21,7 +21,7 @@ import asyncio
 from typing import Callable, Dict, List, Optional, Any, Final
 
 from src.core.logging_config import get_logger
-from src.core.logging_event_registry import CR
+from src.core.log_events import L
 
 logger = get_logger(__name__)
 
@@ -63,7 +63,7 @@ class EventBus:
             self._listeners.setdefault(event_name, []).append(ref)
 
         logger.debug("EventBus: subscribed %r to '%s'", callback, event_name,
-                     extra={"event_id": CR.EVENT_SUBSCRIBED})
+                     extra={"event_id": L.CORE.EVENT_SUBSCRIBED})
 
 
     def subscribe_once(self, event_name: str, callback: Callable) -> None:
@@ -83,7 +83,7 @@ class EventBus:
         self.subscribe(event_name, wrapper)
 
         logger.debug("One-shot subscription for '%s'", event_name, 
-                     extra={"event_id": CR.EVENT_SUBSCRIBED_ONCE})
+                     extra={"event_id": L.CORE.EVENT_SUBSCRIBED_ONCE})
 
     def unsubscribe(self, event_name: str, callback: Callable) -> None:
         """Unsubscribe a listener. Handles dead refs automatically."""
@@ -104,14 +104,14 @@ class EventBus:
                 del self._listeners[event_name]
 
         logger.debug("Unsubscribed %r from '%s'", callback, event_name,
-                      extra={"event_id": CR.EVENT_UNSUBSCRIBED})
+                      extra={"event_id": L.CORE.EVENT_UNSUBSCRIBED})
 
 
     def clear(self) -> None:
         """Remove all listeners for all events."""
         with self._lock:
             self._listeners.clear()
-        logger.debug("EventBus: cleared all listeners", extra={"event_id": CR.EVENT_CLEARED})
+        logger.debug("EventBus: cleared all listeners", extra={"event_id": L.CORE.EVENT_CLEARED})
 
     # ----------------------------
     # Async loop registration
@@ -126,7 +126,7 @@ class EventBus:
         """
         self._async_loop = loop
         logger.debug("EventBus: registered async loop %r", loop,
-                     extra={"event_id": CR.EVENT_LOOP_REGISTERED})
+                     extra={"event_id": L.CORE.EVENT_LOOP_REGISTERED})
 
 
     def emit(self, event_name: str, *args: Any, **kwargs: Any) -> None:
@@ -140,7 +140,7 @@ class EventBus:
         with self._lock:
             if event_name not in self._listeners:
                 logger.debug("Emit '%s' - 0 listeners found.", event_name, 
-                             extra={"event_id": CR.EVENT_MISSING_LISTENER})
+                             extra={"event_id": L.CORE.EVENT_MISSING_LISTENER})
                 return
             
             refs = self._listeners[event_name]
@@ -156,7 +156,7 @@ class EventBus:
             return
         
         logger.debug("Emitting '%s' to %d listeners", event_name, len(to_call),
-                     extra={"event_id": CR.EVENT_EMITTED})
+                     extra={"event_id": L.CORE.EVENT_EMITTED})
 
         for callback in to_call:
             try:
@@ -166,7 +166,7 @@ class EventBus:
                     callback(*args, **kwargs)
             except Exception as e:
                 logger.error("Callback error on '%s': %s", event_name, e, 
-                             extra={"event_id": CR.EVENT_HANDLER_ERROR})
+                             extra={"event_id": L.CORE.EVENT_HANDLER_ERROR})
                 
 
     # ----------------------------
@@ -183,7 +183,7 @@ class EventBus:
                 asyncio.run_coroutine_threadsafe(coro, self._async_loop)
             except Exception as e:
                 logger.error("EventBus: Failed to schedule coroutine: %s", e, 
-                             extra={"event_id": CR.EVENT_HANDLER_ERROR})
+                             extra={"event_id": L.CORE.EVENT_HANDLER_ERROR})
         else:
             # Fallback: If no loop is registered, we try the current thread's loop
             try:
@@ -193,7 +193,7 @@ class EventBus:
                 # CRITICAL: If we get here, the app is misconfigured. 
                 # We log it as a warning instead of spawning uncontrolled threads.
                 logger.warning("EventBus: No async loop registered. Dropping async event.", 
-                               extra={"event_id": CR.EVENT_HANDLER_ERROR})
+                               extra={"event_id": L.CORE.EVENT_HANDLER_ERROR})
 
     # ----------------------------
     # Introspection (Debugging)
