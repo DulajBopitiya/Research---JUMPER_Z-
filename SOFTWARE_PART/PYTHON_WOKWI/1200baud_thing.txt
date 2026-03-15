@@ -1,0 +1,61 @@
+import os
+import time
+import subprocess
+import serial
+import tempfile
+from pathlib import Path
+
+ARDUINO_CLI = "arduino-cli.exe"
+PORT = "COM9"
+FQBN = "arduino:avr:nano:cpu=atmega328old"
+
+DUMMY_CODE = r"""
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  Serial.println("Nano Alive");
+  delay(1000);
+}
+"""
+
+def run(cmd):
+  print("\n> " + " ".join(cmd))
+  subprocess.check_call(cmd)
+
+def create_dummy_sketch_dir() -> Path:
+  base = Path(tempfile.mkdtemp(prefix="nano_upload_"))
+  sketch_name = base.name                 # folder name must match .ino
+  ino_path = base / f"{sketch_name}.ino"  # same name as folder
+  ino_path.write_text(DUMMY_CODE, encoding="utf-8")
+  print(f"Sketch created: {ino_path}")
+  return base
+
+def touch_1200(port: str):
+  s = serial.Serial(port=port, baudrate=1200, timeout=0.1)
+  s.dtr = False
+  time.sleep(0.05)
+  s.close()
+  time.sleep(0.3)
+
+def compile_sketch(sketch_dir: Path):
+  run([ARDUINO_CLI, "compile", "--fqbn", FQBN, str(sketch_dir)])
+
+def upload_sketch(sketch_dir: Path):
+  run([ARDUINO_CLI, "upload", "-p", PORT, "--fqbn", FQBN, str(sketch_dir)])
+
+if __name__ == "__main__":
+  print("Creating dummy sketch...")
+  sketch_dir = create_dummy_sketch_dir()
+
+  print("Compiling sketch...")
+  compile_sketch(sketch_dir)
+
+  print("1200-baud touch reset...")
+  touch_1200(PORT)
+
+  print("Uploading...")
+  upload_sketch(sketch_dir)
+
+  print("Done.")

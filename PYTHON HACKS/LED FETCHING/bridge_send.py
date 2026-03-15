@@ -50,11 +50,16 @@ def find_ports():
 def send_json_line(port: str, payload: dict, baud: int = 115200):
     """Send one JSON line (newline-terminated) to the given serial port."""
     line = json.dumps(payload, separators=(",", ":")) + "\n"
+    print(f"  [send] {len(line)} bytes to {port}")
 
-    with serial.Serial(port, baudrate=baud, timeout=1, write_timeout=1) as s:
+    with serial.Serial(port, baudrate=baud, timeout=2, write_timeout=2) as s:
         time.sleep(0.15)  # small settle for Windows
         s.write(line.encode("utf-8"))
         s.flush()
+        # Read the board's JSON response (ends with newline)
+        resp_line = s.readline()
+        if resp_line:
+            print(f"  [recv] {resp_line.decode('utf-8', errors='replace').strip()}")
 
 
 def send_wokwi_wires(wires: list, prefer_bridge=True):
@@ -74,4 +79,55 @@ def send_wokwi_wires(wires: list, prefer_bridge=True):
     }
 
     send_json_line(target, payload)
+    return target
+
+
+def send_connect_netlist(nets: list, prefer_bridge=True):
+    """
+    Send a 'connect' netlist command to the board, which closes real CH446Q
+    switches in addition to lighting LEDs.
+
+    nets: list of {"nodes": ["TOP_5", "BOTTOM_3", ...], "color": "#rrggbb"}
+          as returned by netlist.build_jz_nets().
+    """
+    dbg, brg = find_ports()
+    target = brg if prefer_bridge else dbg
+
+    if not target:
+        raise RuntimeError(
+            f"Could not find {'BRIDGE' if prefer_bridge else 'DEBUG'} port. "
+            f"Found debug={dbg}, bridge={brg}."
+        )
+
+    payload = {
+        "cmd": "connect",
+        "nets": nets,
+    }
+
+    send_json_line(target, payload)
+    return target
+
+
+def send_connect_then_wires(nets: list, wires: list, prefer_bridge=True,
+                            settle_ms: int = 600):
+    """
+    Two-step send for full visual + physical switching:
+      1. 'connect'     — closes CH446Q switches (physical connections)
+      2. 'wokwi_wires' — paints the full LED wire paths
+
+    settle_ms: wait between the two commands so the board finishes the
+               path-mapping pipeline before the LED repaint arrives.
+    """
+    dbg, brg = find_ports()
+    target = brg if prefer_bridge else dbg
+
+    if not target:
+        raise RuntimeError(
+            f"Could not find {'BRIDGE' if prefer_bridge else 'DEBUG'} port. "
+            f"Found debug={dbg}, bridge={brg}."
+        )
+
+    send_json_line(target, {"cmd": "connect", "nets": nets})
+    time.sleep(settle_ms / 1000.0)
+    send_json_line(target, {"cmd": "wokwi_wires", "wires": wires})
     return target

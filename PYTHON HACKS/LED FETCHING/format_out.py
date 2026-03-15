@@ -119,11 +119,16 @@ def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh
         a = wokwi_node_to_logical(a_node)
         b = wokwi_node_to_logical(b_node)
 
-        if drop_unmapped and (a is None or b is None):
+        # Both unmapped (e.g. component-to-component) — nothing to show
+        if a is None and b is None:
             continue
 
-        if a is None: a = ("UN", -1, -1)
-        if b is None: b = ("UN", -1, -1)
+        # One endpoint has no LED position (e.g. nano pin) — show only the
+        # breadboard endpoint as a blinking dot; no wire path needed
+        if a is None:
+            a = b
+        elif b is None:
+            b = a
 
         w = {
             "color": color,
@@ -132,7 +137,7 @@ def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh
             "raw": [a_node, b_node],
         }
 
-        # ---- make full path only if both are BB holes in same half ----
+        # ---- full path (same section only) or endpoints ----
         path_nodes = expand_manhattan(a_node, b_node, order=path_order)
         if path_nodes:
             pts = nodes_to_logical_points(path_nodes)
@@ -141,6 +146,7 @@ def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh
             else:
                 w["points"] = [w["a"], w["b"]]
         else:
+            # Cross-section wires (rail↔M1, rail↔M2): show endpoints only
             w["points"] = [w["a"], w["b"]]
 
         wires.append(w)
