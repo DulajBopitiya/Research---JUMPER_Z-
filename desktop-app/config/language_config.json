@@ -1,0 +1,39 @@
+{
+    "constants": [
+        "HIGH",
+        "LOW",
+        "OUTPUT",
+        "INPUT",
+        "INPUT_PULLUP",
+        "true",
+        "false",
+        "NULL",
+        "LED_BUILTIN"
+    ],
+    "keywords": [
+        "if",
+        "else",
+        "for",
+        "while",
+        "return",
+        "switch",
+        "case",
+        "void",
+        "int",
+        "float",
+        "double",
+        "char",
+        "bool",
+        "String"
+    ],
+    "registers": [
+        "PORTB",
+        "PORTD",
+        "DDRB",
+        "DDRD",
+        "PINB",
+        "ADCSRA",
+        "TCCR1A",
+        "OCR0A"
+    ]
+}
