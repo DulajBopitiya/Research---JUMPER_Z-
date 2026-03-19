@@ -106,6 +106,57 @@ def nodes_to_logical_points(nodes):
         pts.append([l[0], int(l[1]), int(l[2])])  # ["M1",row,col]
     return pts
 
+def _expand_cross_m1_m2(a, b):
+    """
+    Expand an M1↔M2 cross-section wire into a full path.
+    Routing uses the SOURCE endpoint's column as the crossing column so the
+    visual path matches Wokwi's wire routing:
+
+    M1→M2 (a is M1):
+      1. M1: src_row → row 4 at src_col (down to gap)
+      2. M2: row 0 → dst_row at src_col (drop into M2)
+      3. M2: horizontal at dst_row from src_col to dst_col
+
+    M2→M1 (a is M2):
+      1. M2: src_row → row 0 at src_col (up to gap)
+      2. M1: row 4 → dst_row at src_col (rise into M1)
+      3. M1: horizontal at dst_row from src_col to dst_col
+
+    Both a and b are [section, row, col] lists.
+    Returns a list of points, or None if not an M1↔M2 pair.
+    """
+    if a[0] == 'M1' and b[0] == 'M2':
+        src_row, src_col = a[1], a[2]
+        dst_row, dst_col = b[1], b[2]
+
+        pts = []
+        for r in range(src_row, 5):
+            pts.append(['M1', r, src_col])
+        for r in range(0, dst_row + 1):
+            pts.append(['M2', r, src_col])
+        step = 1 if dst_col >= src_col else -1
+        for c in range(src_col, dst_col + step, step):
+            pts.append(['M2', dst_row, c])
+        return pts
+
+    elif a[0] == 'M2' and b[0] == 'M1':
+        src_row, src_col = a[1], a[2]
+        dst_row, dst_col = b[1], b[2]
+
+        pts = []
+        for r in range(src_row, -1, -1):
+            pts.append(['M2', r, src_col])
+        for r in range(4, dst_row - 1, -1):
+            pts.append(['M1', r, src_col])
+        step = 1 if dst_col >= src_col else -1
+        for c in range(src_col, dst_col + step, step):
+            pts.append(['M1', dst_row, c])
+        return pts
+
+    else:
+        return None  # Not M1↔M2 — caller falls back to endpoint-only
+
+
 def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh"):
     wires = []
 
@@ -146,8 +197,10 @@ def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh
             else:
                 w["points"] = [w["a"], w["b"]]
         else:
-            # Cross-section wires (rail↔M1, rail↔M2): show endpoints only
-            w["points"] = [w["a"], w["b"]]
+            # Cross-section wire — try to expand M1↔M2 path; fall back to
+            # endpoints only for rail↔M1, rail↔M2, or other combinations.
+            cross_pts = _expand_cross_m1_m2(w["a"], w["b"])
+            w["points"] = cross_pts if cross_pts else [w["a"], w["b"]]
 
         wires.append(w)
 
