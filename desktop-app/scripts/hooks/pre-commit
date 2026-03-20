@@ -1,0 +1,65 @@
+#!/usr/bin/env sh
+# .git/hooks/pre-commit
+#
+# Automatically regenerates docs/tree.md before every commit.
+# If the file changes, it is staged automatically so the commit
+# always includes an up-to-date tree.
+#
+# Install:
+#   Option A (manual):   cp scripts/hooks/pre-commit .git/hooks/pre-commit
+#                        chmod +x .git/hooks/pre-commit
+#
+#   Option B (script):   python scripts/install_hooks.py
+#
+# Bypass when needed:
+#   git commit --no-verify -m "your message"
+
+set -e
+
+# ----------------------------------------------------------------
+# 1. Locate the project root (where .git lives)
+# ----------------------------------------------------------------
+ROOT="$(git rev-parse --show-toplevel)"
+
+# ----------------------------------------------------------------
+# 2. Locate Python — prefer the venv interpreter if it exists
+# ----------------------------------------------------------------
+VENV_PYTHON="$ROOT/.venv/Scripts/python.exe"   # Windows
+VENV_PYTHON_UNIX="$ROOT/.venv/bin/python"       # macOS / Linux
+
+if [ -f "$VENV_PYTHON" ]; then
+    PYTHON="$VENV_PYTHON"
+elif [ -f "$VENV_PYTHON_UNIX" ]; then
+    PYTHON="$VENV_PYTHON_UNIX"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="python"
+else
+    echo "[pre-commit] WARNING: Python not found. Skipping tree generation."
+    exit 0
+fi
+
+# ----------------------------------------------------------------
+# 3. Run the tree generator
+# ----------------------------------------------------------------
+echo "[pre-commit] Regenerating docs/tree.md ..."
+
+cd "$ROOT"
+
+if ! "$PYTHON" scripts/generate_tree.py; then
+    echo "[pre-commit] ERROR: generate_tree.py failed. Commit aborted."
+    exit 1
+fi
+
+# ----------------------------------------------------------------
+# 4. Stage the updated tree file if it changed
+# ----------------------------------------------------------------
+if git diff --quiet docs/tree.md 2>/dev/null; then
+    echo "[pre-commit] docs/tree.md unchanged."
+else
+    git add docs/tree.md
+    echo "[pre-commit] docs/tree.md updated and staged."
+fi
+
+exit 0
