@@ -1,9 +1,10 @@
 # src/controller/AppController.py
 
-import logging
+
 from pathlib import Path
 from typing import Optional
 
+from logging import getLogger
 from src.core.event_bus import event_bus
 from src.core.events import HW, Build, Serial, Terminal, Events
 from src.core.log_events import L
@@ -18,7 +19,7 @@ from src.logic.project_context import (
     project_context
 )
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 class AppController:
     """

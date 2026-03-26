@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import tkinter as tk
-from PIL import Image
+
 
 # Assuming BaseFrame is in your project structure
 from src.ui.base_view import BaseFrame

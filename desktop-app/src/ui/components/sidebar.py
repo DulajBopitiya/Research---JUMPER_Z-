@@ -11,7 +11,7 @@ from src.core.logging_config import get_logger
 from src.core.log_events import L
 from src.utils.resource_path import resource_path 
 from src.utils.image_utils import tint_image
-from src.core.theme import COLORS
+from src.ui.theme import COLORS
 
 ICON_PATH = "assets" 
 SIDEBAR_WIDTH_EXPANDED = 180

@@ -2,7 +2,7 @@ import customtkinter as ctk
 import random
 from datetime import datetime
 from src.ui.base_view import BaseFrame
-from src.utils.VirtualBreadboard import VirtualBreadboard
+from src.ui.components.virtual_breadboard import VirtualBreadboard
 
 # Professional UX Palette
 CLR_BG = "#0D1117"           # Deep canvas background

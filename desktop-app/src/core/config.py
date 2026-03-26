@@ -7,36 +7,39 @@ from pathlib import Path
 from typing import Final
 
 # ================================================================
-#                      PATH STRATEGY 
+#                      PATH STRATEGY
 # ================================================================
 
 # Detect if running as a bundled EXE (PyInstaller) or raw Python
 IS_BUNDLE: Final[bool] = getattr(sys, 'frozen', False)
 
 if IS_BUNDLE:
-    # Production Pathing 
+    # Production Pathing
     # Path to the .exe location and the temporary bundle directory %LOCALAPPDATA%
-    ROOT_DIR: Final[Path] = Path(sys.executable).parent.resolve()
-    BUNDLE_DIR: Final[Path] = Path(sys._MEIPASS).resolve()
-    
+    _root_dir   = Path(sys.executable).parent.resolve()
+    _bundle_dir = Path(sys._MEIPASS).resolve()  # type: ignore[attr-defined]
     if platform.system() == "Windows":
-        DATA_BASE: Final[Path] = Path(os.getenv('LOCALAPPDATA', str(ROOT_DIR))) / "JumperZ"
+        _data_base = Path(os.getenv("LOCALAPPDATA", str(_root_dir))) / "JumperZ"
     else:
-        DATA_BASE: Final[Path] = Path.home() / ".jumperz"
+        _data_base = Path.home() / ".jumperz"
 
 else:
     # Development Pathing
     # resolve().parents[2] gets us from src/core/config.py -> root
-    ROOT_DIR: Final[Path] = Path(__file__).resolve().parents[2]
-    BUNDLE_DIR: Final[Path] = ROOT_DIR
-    DATA_BASE: Final[Path] = ROOT_DIR / "runtime_dev"
+    _root_dir   = Path(__file__).resolve().parents[2]
+    _bundle_dir = _root_dir
+    _data_base  = _root_dir / "runtime_dev"
+
+ROOT_DIR  : Final[Path] = _root_dir
+BUNDLE_DIR: Final[Path] = _bundle_dir
+DATA_BASE : Final[Path] = _data_base
 
 # --- Writable Locations ---
 RUNTIME_DIR: Final[Path] = DATA_BASE / "runtime"
 LOG_DIR: Final[Path]    = RUNTIME_DIR / "logs"
 CACHE_DIR: Final[Path]  = RUNTIME_DIR / "cache"
 STAGING_DIR: Final[Path] = RUNTIME_DIR / "staging"
-USER_DATA_DIR: Final[Path] = DATA_BASE / "config" 
+USER_DATA_DIR: Final[Path] = DATA_BASE / "config"
 
 # --- Static Locations ---
 ASSET_DIR: Final[Path] = BUNDLE_DIR / "assets"
@@ -72,10 +75,10 @@ IS_WINDOWS: Final[bool] = platform.system() == "Windows"
 #IS_LINUX: Final[bool] = platform.system() == "Linux"
 
 # UI / Window Settings
-WINDOW_WIDTH: Final[int] = 1200
-WINDOW_HEIGHT: Final[int] = 700
-WINDOW_MIN_WIDTH: Final[int] = 800
-WINDOW_MIN_HEIGHT: Final[int] = 500 
+WINDOW_WIDTH: Final[int]      = 1200
+WINDOW_HEIGHT: Final[int]     = 700
+WINDOW_MIN_WIDTH: Final[int]  = 800
+WINDOW_MIN_HEIGHT: Final[int] = 500
 
 DEFAULT_APPEARANCE_MODE: Final[str] = "dark"    # options: "dark", "light", "system"
 DEFAULT_THEME: Final[str] = "blue"

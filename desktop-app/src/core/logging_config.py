@@ -12,20 +12,19 @@ Global logging configuration for JP PLATFORM.
 """
 
 from __future__ import annotations
+
 import logging
 import sys
-from typing import Any, Dict, Final
+from typing import Any, Final
 
-from src.core.config import LOG_DIR, APP_LOG_FILE
+from src.core.config import APP_LOG_FILE, LOG_DIR
 
 # ================================================================
-#                      Component-Type Mapping 
+#                      Component-Type Mapping
 # ================================================================
-COMPONENT_TYPE_MAP: Final[Dict[str, str]] = {
-
-    #Controllers
+COMPONENT_TYPE_MAP: Final[dict[str, str]] = {
+    # Controllers
     "AppController": "CTRL",
-
     # Views
     "base_frame": "VIEW",
     "dashboard_view": "VIEW",
@@ -35,36 +34,36 @@ COMPONENT_TYPE_MAP: Final[Dict[str, str]] = {
     "data_analysis_view": "VIEW",
     "notifications_view": "VIEW",
     "settings_view": "VIEW",
-
     # UI Components
     "app_shell": "UI",
     "sidebar": "UI",
-
-     # Core Logic
+    # Core Logic
     "task_runner": "CORE",
     "state": "CORE",
     "event_bus": "CORE",
-
     # Services/Logic Modules
-    "project_context": "LOGIC"
+    "project_context": "LOGIC",
 }
 
 
 class EventIDFilter(logging.Filter):
     """Ensures every LogRecord has an 'event_id' to avoid Formatter KeyErrors."""
+
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "event_id"):
             record.event_id = "N/A"
         return True
-    
+
 
 class JPLoggerAdapter(logging.LoggerAdapter):
     """Adapter to ensure 'event_id' is always present in the record extra."""
-    def process(self, msg: str, kwargs: Dict[str, Any]):
+
+    def process(self, msg: str, kwargs: dict[str, Any]):
         event_id = kwargs.pop("event_id", "N/A")
         extra = kwargs.setdefault("extra", {})
         extra.setdefault("event_id", event_id)
         return msg, kwargs
+
 
 def get_logger(name: str) -> JPLoggerAdapter:
     """Return adapted logger with display name: [TYPE:ComponentName]."""
@@ -74,13 +73,19 @@ def get_logger(name: str) -> JPLoggerAdapter:
     return JPLoggerAdapter(logging.getLogger(display_name), {})
 
 
+_logging_configured = False  # module-level flag
+
 
 # -----------------------
 # Global Logging Setup
 # -----------------------
 def configure_logging(console_level: int = logging.INFO):
     """Configure global dual-file logging for JUMPER-Z."""
-    
+
+    global _logging_configured
+    if _logging_configured:
+        return
+
     # Paths are now strictly pulled from config.py
     debug_log_path = LOG_DIR / "debug.log"
 
@@ -88,13 +93,12 @@ def configure_logging(console_level: int = logging.INFO):
     # Formatters
     # --------------------------
     fmt_app = logging.Formatter(
-        "%(asctime)s [%(levelname)s] [%(name)s] [%(event_id)s] %(message)s",
-        datefmt="%H:%M:%S"
+        "%(asctime)s [%(levelname)s] [%(name)s] [%(event_id)s] %(message)s", datefmt="%H:%M:%S"
     )
 
     fmt_debug = logging.Formatter(
         "%(asctime)s [%(levelname)8s] [%(name)-15s] [%(event_id)-10s] %(message)s (%(filename)s:%(lineno)d)",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # --------------------------
@@ -103,7 +107,7 @@ def configure_logging(console_level: int = logging.INFO):
     root = logging.getLogger()
     if getattr(root, "_jp_configured", False):
         return
-    
+
     root.setLevel(logging.DEBUG)
     event_filter = EventIDFilter()
 
@@ -128,5 +132,5 @@ def configure_logging(console_level: int = logging.INFO):
     fh_debug.addFilter(event_filter)
     root.addHandler(fh_debug)
 
-    root._jp_configured = True
-    root.info("System logging initialized.", extra={"event_id": "SYS_START"})
+    _logging_configured = True
+    logging.getLogger().info("System logging initialized.", extra={"event_id": "SYS_START"})

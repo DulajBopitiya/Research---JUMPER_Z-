@@ -1,0 +1,24 @@
+# ruff.toml
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes (unused imports, undefined names)
+    "I",      # isort (import order)
+    "UP",     # pyupgrade (modern Python syntax)
+    "B",      # flake8-bugbear (common bug patterns)
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long — Ruff formatter handles this, not the linter
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["F401"]   # unused imports are fine in test files
+
+[format]
+quote-style = "double"
+indent-style = "space"
