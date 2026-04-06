@@ -22,6 +22,20 @@ static int findChipForSFNode(int node)
     return -1;
 }
 
+// Populate up to 3 candidate chip slots with every chip that has 'node'
+// in its xMap.  Some SF nodes (e.g. SUPPLY_5V) appear on multiple chips
+// (CHIP_J and CHIP_L).  Returning all of them lets resolveChipCandidates
+// find a shared chip with the other node and avoid unnecessary alt-paths.
+static void findAllChipsForSFNode(int node, int candidates[3])
+{
+    int found = 0;
+    for (int c = 8; c <= 11 && found < 3; c++) {
+        for (int x = 0; x < 16; x++) {
+            if (ch[c].xMap[x] == node) { candidates[found++] = c; break; }
+        }
+    }
+}
+
 // Search chExt[0..1] xMap for an EXT pin node.
 // Returns chip number (CHIP_I=8 or CHIP_J=9) or -1.
 static int findChipForEXTNode(int node)
@@ -168,8 +182,10 @@ void findStartAndEndChips()
                     path[i].candidates[nd][1] = nano.mapKL[idx];
 
             } else if (nt == SF) {
-                // Search chips I, J, K, L for whichever has this node in xMap
-                path[i].candidates[nd][0] = findChipForSFNode(node);
+                // Fill all chips that carry this node (some SF nodes like
+                // SUPPLY_5V appear on both CHIP_J and CHIP_L — returning all
+                // lets resolveChipCandidates find the shared-chip overlap).
+                findAllChipsForSFNode(node, path[i].candidates[nd]);
 
             } else if (nt == EXT) {
                 // Search chExt I, J for this external pin
@@ -447,10 +463,31 @@ void commitPaths()
         // node2 = Nano/SF/EXT node (X on SF chip c1)
         //   Hop 0 (BB chip c0): X = bus line going to c1, Y = BB row
         //   Hop 1 (SF chip c1): X = node2's line,         Y = bus back to c0
+        //
+        // Special sub-case BBtoSF where c1 == CHIP_L:
+        //   BB chips' xMap never contains CHIP_L, so x0 = -1 and the path
+        //   would be skipped. Use the same 3-hop routing as BBtoBBL instead:
+        //   BB chip c0: Xfree ↔ Y(n1)       — n1 row on c0
+        //   BB chip c0: Xfree ↔ Y0(CHIP_L)  — same Xfree, bridges to ChipL bus
+        //   CHIP_L:     X(n2) ↔ Y(c0)       — connects SF node to c0 bus
         case BBtoNANO:
         case BBtoSF:
         case BBtoEXT:
         {
+            if (path[i].pathType == BBtoSF && c1 == CHIP_L) {
+                int y_n1 = yIndexForNodeOnChip(n1, c0, 1); // skip Y0 (CHIP_L bus)
+                int y_L  = yIndexForNodeOnChip(CHIP_L, c0); // CHIP_L bus sentinel at Y0
+                int x_bb = findFreeXOnChip(c0);
+                int x_n2 = xIndexForNodeOnChip(n2, CHIP_L);
+                int y_c0 = yIndexForNodeOnChip(c0, CHIP_L);
+                if (y_n1==-1 || y_L==-1 || x_bb==-1 || x_n2==-1 || y_c0==-1) { path[i].skip=true; break; }
+                path[i].chip[0] = c0;     path[i].x[0] = x_bb; path[i].y[0] = y_n1;
+                path[i].chip[1] = c0;     path[i].x[1] = x_bb; path[i].y[1] = y_L;
+                path[i].chip[2] = CHIP_L; path[i].x[2] = x_n2; path[i].y[2] = y_c0;
+                ch[c0].xStatus[x_bb]     = (int16_t)net;
+                ch[CHIP_L].xStatus[x_n2] = (int16_t)net;
+                break;
+            }
             int y0 = yIndexForNodeOnChip(n1, c0, 1); // skip Y0 (CHIP_L bus)
             int x0 = xIndexForNodeOnChip(c1, c0, 0);
             int x1 = resolveXForNode(n2, c1, path[i].nodeType[1]);
@@ -528,11 +565,31 @@ void commitPaths()
             }
             break;
 
+        // ── SFtoSF ────────────────────────────────────────────────────────────
+        // Both SF nodes are X lines. If they share a chip (e.g. SUPPLY_5V and
+        // ISENSE_PLUS are both X lines on CHIP_L), connect them directly via a
+        // free Y line on that chip — same pattern as NANOtoNANO same-chip.
+        // Different chips fall through to resolveAltPaths.
+        case SFtoSF:
+            if (path[i].sameChip) {
+                int x0 = xIndexForNodeOnChip(n1, c0);
+                int x1 = xIndexForNodeOnChip(n2, c0);
+                int y  = findFreeYOnChip(c0);
+                if (x0==-1 || x1==-1 || y==-1) { path[i].skip=true; break; }
+                path[i].chip[0] = c0; path[i].x[0] = x0; path[i].y[0] = y;
+                path[i].chip[1] = c0; path[i].x[1] = x1; path[i].y[1] = y;
+                ch[c0].xStatus[x0] = (int16_t)net;
+                ch[c0].xStatus[x1] = (int16_t)net;
+                ch[c0].yStatus[y]  = (int16_t)net;
+            } else {
+                path[i].altPathNeeded = 1;
+            }
+            break;
+
         // ── Remaining types: handled in resolveAltPaths ──────────────────────
         case NANOtoBBL:
         case SFtoBBL:
         case EXTtoBBL:
-        case SFtoSF:
         case BBLtoBBL:
             path[i].altPathNeeded = 1;
             break;

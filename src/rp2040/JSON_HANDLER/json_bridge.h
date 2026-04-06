@@ -19,6 +19,11 @@
 //   {"cmd":"connect","nets":[{"nodes":["NANO_D3","TOP_5"],"color":"#0f0"},…]}
 //                                 — close physical switches + light endpoints
 //   {"cmd":"netlist_query"}       — return current path state
+//   {"cmd":"measure","node":"TOP_5"}
+//                                 — voltage at node (bus_v = V(node))
+//   {"cmd":"measure","node":"TOP_5","plus":"5V"}
+//                                 — current mode: plus→ISENSE+, node→ISENSE−
+//   {"cmd":"measure_clear"}       — restore netlist brightness, remove meas path
 namespace JsonBridge
 {
     void begin(Adafruit_NeoPixel &strip);

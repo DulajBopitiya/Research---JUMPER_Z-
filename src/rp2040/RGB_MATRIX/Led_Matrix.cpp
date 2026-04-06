@@ -16,6 +16,16 @@ static bool s_haveFrame = false;
 static bool s_blinkOn = true;
 static uint32_t s_lastBlinkMs = 0;
 
+// Snapshot buffers — saved before measurement dims the frame
+static uint8_t s_snapPathR[LedMatrix::NUM_LEDS];
+static uint8_t s_snapPathG[LedMatrix::NUM_LEDS];
+static uint8_t s_snapPathB[LedMatrix::NUM_LEDS];
+static uint8_t s_snapEndR[LedMatrix::NUM_LEDS];
+static uint8_t s_snapEndG[LedMatrix::NUM_LEDS];
+static uint8_t s_snapEndB[LedMatrix::NUM_LEDS];
+static bool    s_snapIsEndpoint[LedMatrix::NUM_LEDS];
+static bool    s_haveSnapshot = false;
+
 // ---------------- helpers ----------------
 static int hexNibble(char c)
 {
@@ -238,7 +248,7 @@ void LedMatrix::frameMarkEndpointIdx(int idx, const RGB &c)
     s_endB[idx] = c.b;
 }
 
-void LedMatrix::frameApplyFull()
+void LedMatrix::frameApplyToBuffer()
 {
     for (int i = 0; i < (int)LedMatrix::NUM_LEDS; i++)
         LedMatrix::strip().setPixelColor((uint16_t)i, LedMatrix::strip().Color(s_pathR[i], s_pathG[i], s_pathB[i]));
@@ -254,8 +264,63 @@ void LedMatrix::frameApplyFull()
             LedMatrix::strip().setPixelColor((uint16_t)i, LedMatrix::strip().Color(s_pathR[i], s_pathG[i], s_pathB[i]));
     }
 
-    LedMatrix::strip().show();
     s_haveFrame = true;
+}
+
+void LedMatrix::frameApplyFull()
+{
+    frameApplyToBuffer();
+    LedMatrix::strip().show();
+}
+
+void LedMatrix::frameSaveSnapshot()
+{
+    for (int i = 0; i < (int)NUM_LEDS; i++) {
+        s_snapPathR[i]    = s_pathR[i];
+        s_snapPathG[i]    = s_pathG[i];
+        s_snapPathB[i]    = s_pathB[i];
+        s_snapEndR[i]     = s_endR[i];
+        s_snapEndG[i]     = s_endG[i];
+        s_snapEndB[i]     = s_endB[i];
+        s_snapIsEndpoint[i] = s_isEndpoint[i];
+    }
+    s_haveSnapshot = true;
+}
+
+void LedMatrix::frameRestoreSnapshot()
+{
+    if (!s_haveSnapshot) return;
+    for (int i = 0; i < (int)NUM_LEDS; i++) {
+        s_pathR[i]    = s_snapPathR[i];
+        s_pathG[i]    = s_snapPathG[i];
+        s_pathB[i]    = s_snapPathB[i];
+        s_endR[i]     = s_snapEndR[i];
+        s_endG[i]     = s_snapEndG[i];
+        s_endB[i]     = s_snapEndB[i];
+        s_isEndpoint[i] = s_snapIsEndpoint[i];
+    }
+}
+
+bool LedMatrix::frameHasSnapshot()
+{
+    return s_haveSnapshot;
+}
+
+void LedMatrix::frameClearSnapshot()
+{
+    s_haveSnapshot = false;
+}
+
+void LedMatrix::frameDimAll(uint8_t factor)
+{
+    for (int i = 0; i < (int)NUM_LEDS; i++) {
+        s_pathR[i] = (uint8_t)((uint16_t)s_pathR[i] * factor / 255);
+        s_pathG[i] = (uint8_t)((uint16_t)s_pathG[i] * factor / 255);
+        s_pathB[i] = (uint8_t)((uint16_t)s_pathB[i] * factor / 255);
+        s_endR[i]  = (uint8_t)((uint16_t)s_endR[i]  * factor / 255);
+        s_endG[i]  = (uint8_t)((uint16_t)s_endG[i]  * factor / 255);
+        s_endB[i]  = (uint8_t)((uint16_t)s_endB[i]  * factor / 255);
+    }
 }
 
 void LedMatrix::frameTick()

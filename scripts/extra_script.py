@@ -45,6 +45,22 @@ def find_port_by_location(loc_suffix_wanted):
             return p.device
     return None
 
+def find_debug_port():
+    """Find CDC0 debug port: prefer exact X.0 location, fall back to no-LOCATION
+    (Windows sometimes omits LOCATION for the first CDC interface)."""
+    exact = find_port_by_location(JZ_SERIAL_SUFFIX)
+    if exact:
+        return exact
+    # Fallback: JumperZ port with no LOCATION field at all
+    for p in _ports():
+        hwid = _hwid_upper(p)
+        if not _is_our_device(hwid):
+            continue
+        if _loc_suffix(hwid) is None:
+            print("Found (no-loc):", p.device, "|", p.description, "|", p.hwid)
+            return p.device
+    return None
+
 def after_upload(source, target, env):
     import time
 
@@ -56,10 +72,10 @@ def after_upload(source, target, env):
     # Wait for Windows re-enumeration after reboot
     t0 = time.time()
     while time.time() - t0 < 30:
-        debug_port  = find_port_by_location(JZ_SERIAL_SUFFIX)
-        bridge_port = find_port_by_location(JZ_NETLIST_SUFFIX)
+        debug_port   = find_debug_port()
+        bridge_port  = find_port_by_location(JZ_NETLIST_SUFFIX)
         osc_fun_port = find_port_by_location(JZ_OSCILLASCOPE_SUFFIX)
-        ttl_port = find_port_by_location(JZ_TTL_SUFIX)
+        ttl_port     = find_port_by_location(JZ_TTL_SUFIX)
         if debug_port:
             break
         time.sleep(0.2)

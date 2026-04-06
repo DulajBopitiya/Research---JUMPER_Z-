@@ -89,6 +89,23 @@ public:
     static void frameApplyFull();
     static void frameTick();
 
+    // Scale every pixel in the framebuffer by factor/255.
+    // factor=64 → ~25% brightness. Leaves endpoint blink markers intact.
+    static void frameDimAll(uint8_t factor);
+
+    // Apply the framebuffer to the NeoPixel hardware buffer WITHOUT calling
+    // show().  Use this when you need to overlay additional pixels (e.g.
+    // CurrentViz sparks) before a single show() call.
+    // frameApplyFull() is equivalent to frameApplyToBuffer() + show().
+    static void frameApplyToBuffer();
+
+    // Snapshot — save the full-brightness frame before a measurement dims it,
+    // so it can be restored exactly (used by measure / measure_clear).
+    static void frameSaveSnapshot();
+    static void frameRestoreSnapshot();
+    static bool frameHasSnapshot();
+    static void frameClearSnapshot();   // discard saved snapshot
+
 private:
     // IMPORTANT: defined ONLY ONCE in Led_Matrix.cpp
     static Adafruit_NeoPixel s_strip;

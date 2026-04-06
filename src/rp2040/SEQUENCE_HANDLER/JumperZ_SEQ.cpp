@@ -15,6 +15,8 @@ namespace JumperZ_SEQUENCE
         LedMatrix::begin(50);
         rgbPatterns::startup(LedMatrix::strip());
         initCH446Q();
+        Measurements::setup();
+        Measurements::scanI2C();
         JsonBridge::clearFrame();
         JsonBridge::begin(LedMatrix::strip());
         NanoHeader::setup();
@@ -37,7 +39,9 @@ namespace JumperZ_SEQUENCE
         }
 
         JsonBridge::tick();
+        CurrentViz::tick();
         NanoHeader::loop();
         UARTMainBridge::loop();
+        
     }
 }

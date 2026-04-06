@@ -42,8 +42,8 @@
         "require_upload_port": true,
         "native_usb": true,
         "use_1200bps_touch": true,
-        "wait_for_upload_port": false,
-        "protocol": "picotool",
+        "wait_for_upload_port": true,
+        "protocol": "mbed",
         "protocols": [
             "blackmagic",
             "cmsis-dap",

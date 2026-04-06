@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-JumperZ is a dual-microcontroller prototyping board firmware. The RP2040 is the primary controller handling USB, LED visualization, circuit path logic, and hardware control. The ESP32-S3 is a secondary bridge controller.
+JumperZ is a dual-microcontroller prototyping board firmware. The RP2040 is the primary controller handling USB, LED visualization, circuit path logic, hardware control, and current/voltage measurement. The ESP32-S3 is a secondary bridge controller.
 
 ## Build Commands
 
@@ -17,10 +17,10 @@ Uses **PlatformIO** with the earlephilhower Arduino-Pico core. Two environments 
 # Build ESP32-S3 firmware
 ~/.platformio/penv/Scripts/pio run -e jumper_zero_ESP32S3
 
-# Upload RP2040 (UF2 drag-drop to drive F:, set in platformio.ini upload_port)
+# Upload RP2040 (UF2 copy to RPI-RP2 drive — board enters BOOTSEL automatically via 1200bps touch)
 ~/.platformio/penv/Scripts/pio run -e jumper_zero_RP2040 -t upload
 
-# Monitor serial (RP2040 — CDC0, default Arduino Serial)
+# Monitor serial (RP2040 — CDC0, port auto-detected by find_JumperZ_monitor.py)
 ~/.platformio/penv/Scripts/pio device monitor -e jumper_zero_RP2040
 
 # Run tests
@@ -29,13 +29,18 @@ Uses **PlatformIO** with the earlephilhower Arduino-Pico core. Two environments 
 
 > `pio` is not on PATH on this Windows machine — always use the full path `~/.platformio/penv/Scripts/pio`.
 
+**Upload driver requirement:** The RP2040 upload uses `upload_protocol = mbed` (UF2 copy to mass-storage drive). The board's USB driver for BOOTSEL mode **must** be the default Windows USB Mass Storage driver — do **not** replace it with WinUSB via Zadig. Zadig/WinUSB is only needed for picotool, which this project does not use. If the RPI-RP2 drive stops appearing, restore the driver in Device Manager → right-click "RP2 Boot" → Update driver → Let me pick → USB Mass Storage Device.
+
 Source files are conditionally compiled per platform using `build_src_filter` — `src/rp2040/` only builds for the RP2040 environment, `src/esp32s3/` only for ESP32-S3. Every new `src/rp2040/` subdirectory must also be added as `-I src/rp2040/<DIR>` in `platformio.ini` `build_flags`.
 
 ### PlatformIO Scripts (`scripts/`)
 
-- `apply_patches.py` — pre-build script that patches library sources before compilation
-- `extra_script.py` — post-build script (UF2 output handling)
-- `find_JumperZ_upload.py` — optional helper for auto-detecting upload port (not active by default)
+| Script | Status | Purpose |
+|--------|--------|---------|
+| `apply_patches.py` | active (pre-build) | Patches library sources before compilation |
+| `extra_script.py` | active (post-build + post-upload) | UF2 output; `after_upload` hook scans for all 4 CDC ports by LOCATION suffix and prints `MONITOR_PORT`/`BRIDGE_PORT`/`OSC_FUN_PORT`/`TTL_PORT` |
+| `find_JumperZ_monitor.py` | active (pre-monitor) | Auto-detects CDC 0 debug port and sets `MONITOR_PORT` |
+| `find_JumperZ_upload.py` | inactive | Auto-detect upload port helper (commented out in `platformio.ini`) |
 
 ## Architecture
 
@@ -47,6 +52,7 @@ setup() → JumperZ_SEQ::JumperZ_Setup()
   ├── LedMatrix::begin(50)              # 400× WS2812B LEDs, brightness=50
   ├── rgbPatterns::startup()            # Startup animation (comet → name → sparkles)
   ├── initCH446Q()                      # PIO program load + hardware RST all 12 chips
+  ├── Measurements::setup()             # Wire0 init + INA219 configuration
   ├── JsonBridge::clearFrame()
   ├── JsonBridge::begin()
   └── NanoHeader::setup()
@@ -55,6 +61,7 @@ loop() → JumperZ_SEQ::JumperZ_Loop()
   ├── Read JSON from USBSer1 (if available)
   ├── JsonBridge::handle(USBSer1, req)  # Dispatch JSON commands
   ├── JsonBridge::tick()                # Blink animation at 350ms
+  ├── CurrentViz::tick()                # Current-flow animation (no-op when disabled)
   └── NanoHeader::loop()                # TTL bridge — must NOT be commented out
 ```
 
@@ -62,14 +69,16 @@ loop() → JumperZ_SEQ::JumperZ_Loop()
 
 ### USB CDC Ports (RP2040)
 
-4 CDC descriptors configured (`CFG_TUD_CDC=4` in `include/custom_tusb_config.h`), but **Windows only enumerates 3** — it drops the last CDC interface. The `addInterface` order in `usb_cdc_config.cpp` is deliberately arranged so the most critical ports land at lower indices:
+4 CDC descriptors configured (`CFG_TUD_CDC=4` in `include/custom_tusb_config.h`). Most Windows setups enumerate 3 and drop CDC 3; some Windows 11 machines enumerate all 4. The `addInterface` order in `usb_cdc_config.cpp` is deliberately arranged so the most critical ports land at lower indices:
 
-| CDC Index | Object | Name | COM (typical) | Function |
-|-----------|--------|------|---------------|----------|
-| 0 | `Serial` | "TinyUSB" | COM16 | Default Arduino serial / debug output |
-| 1 | `USBSer1` | "JZ NETSH" | COM14 | Main JSON control channel |
-| 2 | `USBSer3` | "JZ TTL" | COM18 | Arduino Nano TTL bridge |
-| 3 | `USBSer2` | "JZ Oscilloscope" | — | **Dropped by Windows** |
+| CDC Index | Object | Name | LOCATION suffix | Function |
+|-----------|--------|------|-----------------|----------|
+| 0 | `Serial` | "TinyUSB" | `X.0` (or none — see below) | Default Arduino serial / debug output |
+| 1 | `USBSer1` | "JZ NETSH" | `X.2` | Main JSON control channel |
+| 2 | `USBSer3` | "JZ TTL" | `X.4` | Arduino Nano TTL bridge |
+| 3 | `USBSer2` | "JZ Oscilloscope" | `X.6` | Dropped on most Windows; present on Win11 |
+
+**LOCATION quirk:** On some Windows 11 systems CDC 0 (`Serial`) reports no `LOCATION` field in its USB hwid string. Both `extra_script.py` and `find_JumperZ_monitor.py` handle this with a no-location fallback — a JumperZ port with no LOCATION is treated as CDC 0.
 
 Key constraints:
 - `CFG_TUD_MSC = 0` — MSC must stay disabled; enabling it bloats the descriptor and causes Windows to drop CDC 3.
@@ -89,8 +98,13 @@ Commands are newline-terminated JSON sent to **USBSer1 ("JZ NETSH")**. Each comm
 | `{"cmd":"netlist_query"}` | Return current path state (capped at 32 paths in JSON) |
 | `{"cmd":"debug"}` | Dump chip map / paths / nets as text, then JSON ACK |
 | `{"cmd":"debug","what":"summary"\|"chips"\|"paths"\|"nets"}` | Scoped debug dump |
+| `{"cmd":"measure","node":"TOP_5"}` | Voltage-only: node→ISENSE_MINUS, returns bus_v = V(node) |
+| `{"cmd":"measure","node":"TOP_5","plus":"5V","sensor":0}` | Current mode: plus→ISENSE_PLUS, node→ISENSE_MINUS; returns V, I, P |
+| `{"cmd":"measure_clear"}` | Restore full-brightness LED frame, remove measurement nets, discard snapshot |
+| `{"cmd":"current_viz","enable":true,"speed":1.0}` | Enable animated current-flow sparks — direction determined automatically from node potentials (GND=0V, 3.3V, 5V seeded; propagated through net graph) |
+| `{"cmd":"current_viz","enable":false}` | Disable animation and restore static frame |
 
-Node names in `"connect"` are resolved through `sfMappings[]` in `path_mapping_algo.cpp`. Any name not in that table returns an error in `"err_nodes"`.
+Node names in `"connect"` and `"measure"` are resolved through `sfMappings[]` in `path_mapping_algo.cpp`. Any name not in that table returns an error in `"err_nodes"`.
 
 Wire path coordinates: `["T", row, col]` (top rail 2×25), `["B", row, col]` (bottom rail 2×25), `["M1", row, col]` (mid1 5×30), `["M2", row, col]` (mid2 5×30). Wire LEDs are painted steady; endpoint LEDs blink at 350 ms.
 
@@ -112,13 +126,19 @@ Index formulas:
 - `mid2Index(row, col)  = 200 + col*5 + row`   (column-major)
 - Top/bottom rails use a **snake** layout within each 5-column block.
 
-Key API: `logicalToIndex(sec, row, col)` — maps `"T"/"B"/"M1"/"M2"` + row/col to strip index. `framePaintPathIdx()` / `frameMarkEndpointIdx()` write to the framebuffer; `frameApplyFull()` pushes it to the strip; `frameTick()` handles the 350 ms blink.
+Key API: `logicalToIndex(sec, row, col)` — maps `"T"/"B"/"M1"/"M2"` + row/col to strip index. `framePaintPathIdx()` / `frameMarkEndpointIdx()` write to the framebuffer; `frameApplyFull()` pushes it to the strip; `frameTick()` handles the 350 ms blink. `frameDimAll(factor)` scales every pixel by `factor/255` in-place (used by `measure` to dim existing connections to ~25%).
+
+Snapshot API (used exclusively by `measure` / `measure_clear`): `frameSaveSnapshot()` / `frameRestoreSnapshot()` / `frameHasSnapshot()` / `frameClearSnapshot()` — save and restore the full-brightness frame around a measurement cycle.
 
 ### LED Patterns (`src/rp2040/RGB_MATRIX/LED_PATTERNS/`)
 
 `rgbPatterns` namespace — called once at boot, blocks with `delay()`:
-- `startup(strip)` — Phase 1: rainbow comet sweep. Phase 2: `showName()` for 3 s. Phase 3: sparkle fade for 2.5 s.
-- `showName(strip)` — renders "JUMPER-Z" using a 5×3 pixel font. "JUMP" on M1, "ER-Z" on M2, starting at `START_COL=7` with `CHAR_STEP=4` cols per character.
+- `startup(strip)` — 4-phase sequence:
+  1. Rainbow comet sweep across all 400 LEDs (~840 ms)
+  2. "FABVOLT" letter-by-letter on M1 in gold (~1.1 s)
+  3. "FABVOLT" breathes on M1 while "PROTOMATRIX V1" scrolls right-to-left on M2 in ice-blue (~1.3 s)
+  4. Gold + ice-blue sparkle fade (~1.5 s)
+- `showName(strip)` — legacy: renders "JUMPER-Z" using a 5×3 pixel font. "JUMP" on M1, "ER-Z" on M2, `START_COL=7`, `CHAR_STEP=4` cols per character. Kept for compatibility but not called by `startup()`.
 
 ### SPI Handler (`src/rp2040/SPI_HANDLER/`)
 
@@ -183,6 +203,48 @@ Special nets 0–7 are pre-defined (Empty, GND, +5V, +3.3V, DAC0, DAC1, I-Sense+
 
 Reference implementation: `docs/jumperless_netlist_pathmapping_reference.md`.
 
+### INA219 Current Measurement (`src/rp2040/MEASUREMENTS/`)
+
+Two INA219AIDR sensors on **Wire0 (GPIO 4 SDA / GPIO 5 SCL)**. They are switched into circuit via **Chip L** on the CH446Q matrix:
+
+| Chip L pin | Node | INA219 terminal |
+|------------|------|-----------------|
+| X0 | ISENSE_MINUS (109) | IN− |
+| X1 | ISENSE_PLUS  (108) | IN+ |
+
+- `Measurements::setup()` — initialises Wire0 at 400 kHz, writes config + calibration registers to both sensors.
+- `Measurements::read(idx)` — returns `{shuntMv, busV, currentMa, powerMw, valid}`. Re-applies calibration on every call.
+- `Measurements::scanI2C()` — scans Wire0 and prints responding addresses to `Serial`. Call once during bring-up to confirm I2C addresses, then remove from the loop.
+
+**Configuration constants in `measurements.h`:**
+- `INA219_ADDR_0 / INA219_ADDR_1` — 7-bit I2C addresses (default 0x40 / 0x41). Your hardware uses 8-bit write-address format (0x80 / 0x82) — shift right by 1 to get the 7-bit value.
+- `INA219_SHUNT_OHMS` — shunt resistor value; update to match the actual component on the board. `currentMa` and `powerMw` scale from this; `shuntMv` and `busV` are always raw.
+
+The `{"cmd":"measure"}` JSON handler (in `json_bridge.cpp`) is **non-destructive** — it preserves existing user nets. It hardware-resets the CH446Q chips, re-runs the full pipeline with the existing nets plus the new measurement nets, settles 10 ms, reads the sensor, and leaves the measurement path active.
+
+**Two modes:**
+- **Voltage-only** (no `plus` field): `node → ISENSE_MINUS`. `bus_v` = V(node).
+- **Current mode** (`plus` provided): `plus → ISENSE_PLUS`, `node → ISENSE_MINUS`. Current flows plus → shunt → node; `current_ma = shunt_mv / shunt_resistance`.
+
+**LED snapshot management:** On first `measure` call, the full-brightness framebuffer is saved (`frameSaveSnapshot`). On subsequent calls it is restored then re-dimmed (`frameDimAll(64)` → ~25%). `measure_clear` calls `frameRestoreSnapshot` + `frameClearSnapshot` to return to full brightness. Node LEDs: cyan = measured node, amber = `plus` supply side.
+
+Node names sent via `plus` and `node` fields are **case-sensitive** and must match `sfMappings[]` exactly (always uppercase, e.g., `"5V"` not `"5v"`).
+
+### Current Visualization (`src/rp2040/MEASUREMENTS/current_viz.h/.cpp`)
+
+`CurrentViz` namespace — animates a comet spark along each active net's bridge connections, flowing from high to low potential:
+
+- Voltage seeding: GND (node 100) = 0 V, 3.3V (node 103) = 3.3 V, 5V (node 105) = 5.0 V. Propagated through the net graph.
+- Bridges where both node voltages are unknown fall back to bidirectional animation.
+- Only breadboard nodes (TOP_1–30 → M1 row 0, BOTTOM_1–30 → M2 row 0) are drawn; non-LED nodes (GND, 5V, NANO, etc.) participate in voltage propagation only.
+
+API:
+- `CurrentViz::enable(bool on, float speed)` — enable/disable; `speed=1.0` → ~750 ms full cycle.
+- `CurrentViz::tick()` — call every loop iteration; rate-limited to ~33 fps; no-op when disabled.
+- `CurrentViz::isEnabled()` — query state.
+
+Controlled via `{"cmd":"current_viz","enable":true/false,"speed":N}` JSON command.
+
 ### Debug Module (`src/rp2040/DEBUG/`)
 
 `JZDebug` namespace — triggered on demand via JSON or direct call:
@@ -208,6 +270,8 @@ These run on the PC and communicate with the board over USB serial.
 | File | Purpose |
 |------|---------|
 | `main.py` | Fetch Wokwi diagram, build wire paths, send to board |
+| `measure.py` | CLI tool for INA219 measurement. Modes: continuous (`-n`), `--guided` (two-pass baseline/load corrected current), `--autodiff` (auto-cluster HIGH/LOW for toggling signals). `--samples N` controls sample count for autodiff. |
+| `current_viz.py` | Toggle current-flow LED animation (`--on`/`--off`/interactive). Imports `BoardConn` from `measure.py`. |
 | `debug_menu.py` | Interactive terminal menu for `{"cmd":"debug"}` requests |
 | `bridge_send.py` | Low-level send helpers: `send_wokwi_wires()`, `send_connect_netlist()`, `send_connect_then_wires()` |
 | `netlist.py` | `build_nets()`, `build_jz_nets()` — group Wokwi connections into nets |
@@ -218,12 +282,12 @@ These run on the PC and communicate with the board over USB serial.
 | `led_diagnostic.py` | Physical LED layout verification tool (interactive, board must be connected) |
 | `wokwi_fetch.py` | Fetch `diagram.json` from a Wokwi project URL |
 
-Board auto-detection uses VID `1D51` / PID `ACAB`. Bridge port = USB location suffix `X.2` (USBSer1). Cross-section wires (rail↔M1/M2) show endpoints only — no intermediate path. Same-section wires (M1↔M1, M2↔M2) use full Manhattan L-path.
+Board auto-detection uses VID `1D51` / PID `ACAB`. Bridge port = USB location suffix `X.2` (USBSer1). Debug port = suffix `X.0` (Serial) — or no LOCATION at all on some Windows 11 machines. Cross-section wires (rail↔M1/M2) show endpoints only — no intermediate path. Same-section wires (M1↔M1, M2↔M2) use full Manhattan L-path.
 
 ## Custom Board Definitions
 
 Custom board JSON files in `boards/`:
-- `jumper_z_rp2040.json` — VID `0x1D51`, PID `0xACAB`, 2MB flash, 262KB RAM
+- `jumper_z_rp2040.json` — VID `0x1D51`, PID `0xACAB`, 2MB flash, 262KB RAM. Upload protocol set to `"mbed"` (UF2 mass-storage copy). Do not change to `"picotool"` — it requires a different USB driver that breaks mass-storage upload.
 - `jumper_z_esp32s3.json` — VID `0x303A`, PID `0x1001`, 8MB flash QIO
 
 Variant pin definitions in `Variants/RP2040_VARIANT/` and `Variants/ESP32S3_VARIANT/`.
@@ -233,4 +297,5 @@ Variant pin definitions in `Variants/RP2040_VARIANT/` and `Variants/ESP32S3_VARI
 - **Adafruit NeoPixel** — WS2812B LED strip control
 - **Adafruit TinyUSB Library** — Multi-CDC USB serial
 - **ArduinoJson** — JSON command parsing/serialization
+- **Wire** (built-in) — I2C for INA219 sensors on GPIO 4/5
 - `lib_ignore = SoftwareSPI` — prevents shadowing of the project's custom `spi.pio.h`

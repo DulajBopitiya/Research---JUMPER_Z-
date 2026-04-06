@@ -10,6 +10,10 @@
 
 #define MAX_NETS 64
 
+//current sensor pins WIRE0 default isc wireing
+#define INA219_SDA_PIN      4
+#define INA219_SCL_PIN      5
+
 // Your pins
 #define CH_DATA 14   // DAT
 #define CH_CLK  15   // CS/CK (serial clock)

@@ -1,8 +1,13 @@
 #include "json_bridge.h"
 #include "jz_debug.h"
+#include "measurements.h"
 
 namespace JsonBridge
 {
+  // Tracks which net[] slots the last measure command occupied so they can
+  // be freed on the next call or on measure_clear.
+  static int s_measNetIdx[2] = {-1, -1};
+
   // ── Internal helpers ──────────────────────────────────────────────────────
 
   // Map a logical node number to an LED strip index (best-effort).
@@ -16,6 +21,85 @@ namespace JsonBridge
     if (node >= BOTTOM_1 && node <= BOTTOM_30)
       return (int)LedMatrix::mid2Index(0, (uint8_t)(node - BOTTOM_1));
     return -1;
+  }
+
+  // Paint the visual LED path for one bridge (n1 ↔ n2) on the framebuffer.
+  //
+  // TOP_A ↔ TOP_B  (M1 → M1):
+  //   Horizontal line at row 0, cols A..B.
+  //
+  // BOTTOM_A ↔ BOTTOM_B  (M2 → M2):
+  //   Horizontal line at row 0, cols A..B.
+  //
+  // TOP_A ↔ BOTTOM_B  (M1 → M2 cross-section):
+  //   • M1 rows 3–4 at col A  (wire exits M1 downward)
+  //   • M2 rows 0–1 at col A  (wire enters M2 at the same column)
+  //   • M2 row 1, cols A..B   (horizontal routing to destination)
+  //   • M2 row 0 at col B     (destination column)
+  //
+  // Non-breadboard nodes (GND, 5V, NANO, etc.) just get an endpoint marker
+  // where they have a LED representation.
+  //
+  // Endpoint blink markers are always placed on the outermost row-0 LEDs of
+  // the connected columns.
+  static void paintBridgeLeds(int n1, int n2, LedMatrix::RGB_t col)
+  {
+    bool isTop1 = (n1 >= TOP_1    && n1 <= TOP_30);
+    bool isTop2 = (n2 >= TOP_1    && n2 <= TOP_30);
+    bool isBot1 = (n1 >= BOTTOM_1 && n1 <= BOTTOM_30);
+    bool isBot2 = (n2 >= BOTTOM_1 && n2 <= BOTTOM_30);
+
+    if (isTop1 && isTop2) {
+      // ── M1 → M1: horizontal path at row 0 ──────────────────────────────
+      uint8_t c1 = (uint8_t)(n1 - TOP_1), c2 = (uint8_t)(n2 - TOP_1);
+      uint8_t lo = c1 < c2 ? c1 : c2, hi = c1 > c2 ? c1 : c2;
+      for (uint8_t c = lo; c <= hi; c++)
+        LedMatrix::framePaintPathIdx(LedMatrix::mid1Index(0, c), col);
+      LedMatrix::frameMarkEndpointIdx(LedMatrix::mid1Index(0, c1), col);
+      LedMatrix::frameMarkEndpointIdx(LedMatrix::mid1Index(0, c2), col);
+    }
+    else if (isBot1 && isBot2) {
+      // ── M2 → M2: horizontal path at row 0 ──────────────────────────────
+      uint8_t c1 = (uint8_t)(n1 - BOTTOM_1), c2 = (uint8_t)(n2 - BOTTOM_1);
+      uint8_t lo = c1 < c2 ? c1 : c2, hi = c1 > c2 ? c1 : c2;
+      for (uint8_t c = lo; c <= hi; c++)
+        LedMatrix::framePaintPathIdx(LedMatrix::mid2Index(0, c), col);
+      LedMatrix::frameMarkEndpointIdx(LedMatrix::mid2Index(0, c1), col);
+      LedMatrix::frameMarkEndpointIdx(LedMatrix::mid2Index(0, c2), col);
+    }
+    else if ((isTop1 && isBot2) || (isBot1 && isTop2)) {
+      // ── M1 ↔ M2 cross-section path ──────────────────────────────────────
+      uint8_t cTop = isTop1 ? (uint8_t)(n1 - TOP_1)    : (uint8_t)(n2 - TOP_1);
+      uint8_t cBot = isBot2 ? (uint8_t)(n2 - BOTTOM_1) : (uint8_t)(n1 - BOTTOM_1);
+
+      // M1: exit rows 3, 4 at cTop
+      LedMatrix::framePaintPathIdx(LedMatrix::mid1Index(3, cTop), col);
+      LedMatrix::framePaintPathIdx(LedMatrix::mid1Index(4, cTop), col);
+
+      // M2: entry rows 0, 1 at cTop (drops into M2 at the same column)
+      LedMatrix::framePaintPathIdx(LedMatrix::mid2Index(0, cTop), col);
+      LedMatrix::framePaintPathIdx(LedMatrix::mid2Index(1, cTop), col);
+
+      // M2: horizontal routing at row 1 from cTop to cBot
+      uint8_t lo = cTop < cBot ? cTop : cBot;
+      uint8_t hi = cTop > cBot ? cTop : cBot;
+      for (uint8_t c = lo; c <= hi; c++)
+        LedMatrix::framePaintPathIdx(LedMatrix::mid2Index(1, c), col);
+
+      // M2: ensure row 0 at cBot is painted (destination endpoint column)
+      LedMatrix::framePaintPathIdx(LedMatrix::mid2Index(0, cBot), col);
+
+      // Endpoint blink markers
+      LedMatrix::frameMarkEndpointIdx(LedMatrix::mid1Index(0, cTop), col);
+      LedMatrix::frameMarkEndpointIdx(LedMatrix::mid2Index(0, cBot), col);
+    }
+    else {
+      // ── Non-breadboard node(s): fall back to endpoint-only ───────────────
+      int led1 = nodeToLedIndex(n1);
+      int led2 = nodeToLedIndex(n2);
+      if (led1 >= 0) LedMatrix::frameMarkEndpointIdx(led1, col);
+      if (led2 >= 0) LedMatrix::frameMarkEndpointIdx(led2, col);
+    }
   }
 
   // Look up a node name string in sfMappings[]. Returns node number or -1.
@@ -76,6 +160,21 @@ namespace JsonBridge
     }
     return -1;
   }
+  // Free one user net slot back to empty.
+  static void clearNetSlot(int n)
+  {
+    if (n < 8 || n >= MAX_NETS) return;
+    net[n].number = (uint8_t)n;
+    for (int i = 0; i < MAX_NODES; i++) {
+      net[n].nodes[i]      = 0;
+      net[n].bridges[i][0] = 0;
+      net[n].bridges[i][1] = 0;
+    }
+    net[n].specialFunction    = -1;
+    net[n].machine            = true;
+    net[n].numberOfDuplicates = 0;
+  }
+
   // ---------------- helpers ----------------
   static void sendJson(Stream &s, JsonDocument &doc)
   {
@@ -302,13 +401,11 @@ namespace JsonBridge
         int netIdx = addUserNet(resolvedNodes, resolvedCount, col, rawCol);
         if (netIdx < 0) { skipped++; continue; }
 
-        // Light endpoint LEDs for this net
-        // (Intermediate path LEDs are left to wokwi_wires; here we just mark
-        //  the two endpoint nodes so the user sees which nodes are connected.)
-        int ledA = nodeToLedIndex(resolvedNodes[0]);
-        int ledB = nodeToLedIndex(resolvedNodes[resolvedCount - 1]);
-        if (ledA >= 0) LedMatrix::frameMarkEndpointIdx(ledA, col);
-        if (ledB >= 0) LedMatrix::frameMarkEndpointIdx(ledB, col);
+        // Paint the visual path for every bridge pair in this net.
+        // paintBridgeLeds() handles M1→M1, M2→M2, M1↔M2 cross-section, and
+        // non-breadboard nodes, each with the appropriate LED path geometry.
+        for (int i = 0; i < resolvedCount - 1; i++)
+          paintBridgeLeds(resolvedNodes[i], resolvedNodes[i + 1], col);
 
         netsAdded++;
       }
@@ -384,6 +481,216 @@ namespace JsonBridge
 
       resp["ok"]   = true;
       resp["what"] = what;
+      sendJson(replyTo, resp);
+      return;
+    }
+
+    // ── measure ──────────────────────────────────────────────────────────────
+    // Route a node through the on-board INA219 current sensor and return
+    // the measurement.
+    //
+    // Request:
+    //   {
+    //     "cmd"   : "measure",
+    //     "node"  : "TOP_5",     // node under test → connected to ISENSE_PLUS
+    //     "ref"   : "GND",       // reference node  → connected to ISENSE_MINUS
+    //                            //   (defaults to "GND" if omitted)
+    //     "sensor": 0            // 0 or 1, selects INA219 (default 0)
+    //   }
+    //
+    // The command clears previous user connections, routes node→ISENSE_PLUS
+    // and ref→ISENSE_MINUS via the CH446Q crosspoint matrix, waits for the
+    // ADC to settle, reads the INA219, and leaves the measurement path active
+    // so the endpoint LEDs remain lit.
+    //
+    // Response:
+    //   { "ok": true,
+    //     "node": "TOP_5", "ref": "GND", "sensor": 0,
+    //     "shunt_mv": 0.42,   "bus_v": 4.98,
+    //     "current_ma": 4.2,  "power_mw": 20.9 }
+    // ── measure ──────────────────────────────────────────────────────────────
+    // Non-destructive: keeps existing netlist connections and LED state.
+    //
+    // INA219 topology:
+    //   Chip L X0 = ISENSE_MINUS = IN−  (bus voltage measured here)
+    //   Chip L X1 = ISENSE_PLUS  = IN+  (shunt high-side)
+    //
+    // Voltage-only mode (default — no "plus" field):
+    //   node → ISENSE_MINUS   bus_v  = V(node) relative to GND  ← main reading
+    //   ISENSE_PLUS floats    (bus-voltage ADC is independent of IN+)
+    //
+    // Current mode (provide "plus" field):
+    //   plus → ISENSE_PLUS, node → ISENSE_MINUS
+    //   Current flows:  plus → shunt → node
+    //   bus_v  = V(node), current_ma = shunt_mv / shunt_resistance
+    //
+    // Both modes are non-destructive: existing user nets are preserved.
+    // First call saves a full-brightness LED snapshot; subsequent calls in a
+    // continuous loop restore from it before re-dimming.
+    //
+    //   {"cmd":"measure","node":"TOP_17"}
+    //   {"cmd":"measure","node":"TOP_17","plus":"5V","sensor":0}
+    //
+    // Response:
+    //   {"ok":true,"node":"TOP_17","mode":"voltage","bus_v":3.30,
+    //    "shunt_mv":0.00,"current_ma":0.00,"power_mw":0.00}
+    if (!strcmp(cmd, "measure"))
+    {
+      const char *nodeName  = req["node"]   | "";
+      const char *plusName  = req["plus"]   | "";   // optional, for current mode
+      uint8_t     sensorIdx = (uint8_t)(req["sensor"] | 0);
+
+      int nodeNum = resolveNodeName(nodeName);
+      if (nodeNum < 0) {
+        resp["ok"]   = false;  resp["err"]  = "unknown node";
+        resp["node"] = nodeName;
+        sendJson(replyTo, resp); return;
+      }
+
+      // Resolve optional "plus" node (current-measurement mode)
+      int plusNum = -1;
+      bool currentMode = (plusName[0] != '\0');
+      if (currentMode) {
+        plusNum = resolveNodeName(plusName);
+        if (plusNum < 0) {
+          resp["ok"]  = false;  resp["err"] = "unknown plus node";
+          resp["plus"] = plusName;
+          sendJson(replyTo, resp); return;
+        }
+      }
+
+      if (sensorIdx > 1) {
+        resp["ok"]  = false;  resp["err"] = "sensor must be 0 or 1";
+        sendJson(replyTo, resp); return;
+      }
+
+      // ── Snapshot management ───────────────────────────────────────────────
+      if (!LedMatrix::frameHasSnapshot()) {
+        LedMatrix::frameSaveSnapshot();         // first call: save full brightness
+      } else {
+        LedMatrix::frameRestoreSnapshot();      // continuous: restore then re-dim
+        clearNetSlot(s_measNetIdx[0]);
+        clearNetSlot(s_measNetIdx[1]);
+        s_measNetIdx[0] = s_measNetIdx[1] = -1;
+      }
+
+      // Hardware-reset chips; net[] (existing user netlist) is preserved.
+      clearAllChips();
+
+      // ── Route measurement connections ─────────────────────────────────────
+      // Voltage mode: node → ISENSE_MINUS   (BBtoSF path, always works)
+      // Current mode: plus → ISENSE_PLUS, node → ISENSE_MINUS
+      int measNodes[2];
+      LedMatrix::RGB_t colNode = { 0x00, 0xFF, 0xFF };   // cyan  — measured node
+      LedMatrix::RGB_t colPlus = { 0xFF, 0xA0, 0x00 };   // amber — supply side
+
+      // node → ISENSE_MINUS (bus_v = V(node))
+      measNodes[0] = nodeNum;  measNodes[1] = ISENSE_MINUS;
+      s_measNetIdx[0] = addUserNet(measNodes, 2, colNode, 0x00FFFF);
+
+      // plus → ISENSE_PLUS (only in current mode)
+      s_measNetIdx[1] = -1;
+      if (currentMode) {
+        measNodes[0] = plusNum;  measNodes[1] = ISENSE_PLUS;
+        s_measNetIdx[1] = addUserNet(measNodes, 2, colPlus, 0xFFA000);
+      }
+
+      // Re-run full pipeline (existing nets + measurement nets).
+      netsToChipConnectionsFull();
+      sendAllPaths(1);
+
+      // ── LEDs: dim existing frame, spotlight measurement node ──────────────
+      LedMatrix::frameDimAll(64);   // ~25 % — netlist visible but receded
+
+      int ledNode = nodeToLedIndex(nodeNum);
+      if (ledNode >= 0) LedMatrix::frameMarkEndpointIdx(ledNode, colNode);
+
+      if (currentMode) {
+        int ledPlus = nodeToLedIndex(plusNum);
+        if (ledPlus >= 0) LedMatrix::frameMarkEndpointIdx(ledPlus, colPlus);
+      }
+
+      LedMatrix::frameResetBlink();
+      LedMatrix::frameApplyFull();
+
+      // Settle: INA219 12-bit conversion ~1.1 ms/channel; 10 ms is safe.
+      delay(10);
+
+      Measurements::Reading r = Measurements::read(sensorIdx);
+      if (!r.valid) {
+        resp["ok"]     = false;
+        resp["err"]    = "INA219 not responding";
+        resp["sensor"] = (int)sensorIdx;
+        sendJson(replyTo, resp); return;
+      }
+
+      resp["ok"]         = true;
+      resp["node"]       = nodeName;
+      resp["mode"]       = currentMode ? "current" : "voltage";
+      if (currentMode) resp["plus"] = plusName;
+      resp["sensor"]     = (int)sensorIdx;
+      resp["bus_v"]      = r.busV;
+      resp["shunt_mv"]   = r.shuntMv;
+      resp["current_ma"] = r.currentMa;
+      resp["power_mw"]   = r.powerMw;
+      sendJson(replyTo, resp);
+      return;
+    }
+
+    // ── measure_clear ─────────────────────────────────────────────────────────
+    // Remove measurement connections, restore the LED frame to full brightness,
+    // and discard the snapshot. Sent by Python on quit or when the user
+    // requests "clear".
+    //
+    //   {"cmd":"measure_clear"}
+    //
+    // Response: {"ok":true}
+    if (!strcmp(cmd, "measure_clear"))
+    {
+      // Free the measurement net slots
+      clearNetSlot(s_measNetIdx[0]);
+      clearNetSlot(s_measNetIdx[1]);
+      s_measNetIdx[0] = s_measNetIdx[1] = -1;
+
+      // Re-apply hardware connections for remaining (user) nets only
+      clearAllChips();
+      netsToChipConnectionsFull();
+      sendAllPaths(1);
+
+      // Restore full-brightness LED frame from snapshot and discard it,
+      // so the next measure call saves a fresh snapshot.
+      if (LedMatrix::frameHasSnapshot()) {
+        LedMatrix::frameRestoreSnapshot();
+        LedMatrix::frameClearSnapshot();
+        LedMatrix::frameResetBlink();
+        LedMatrix::frameApplyFull();
+      }
+
+      resp["ok"] = true;
+      sendJson(replyTo, resp);
+      return;
+    }
+
+    // ── current_viz ───────────────────────────────────────────────────────────
+    // Toggle animated current-flow sparks on the LED matrix.
+    //
+    // The animation overlays moving "comet" sparks on top of the active netlist
+    // LEDs, flowing along each net's bridge connections.  Only breadboard nodes
+    // (TOP_1–30, BOTTOM_1–30) are animated; GND/5V/NANO endpoints are skipped.
+    //
+    //   {"cmd":"current_viz","enable":true}              // on, speed=1.0
+    //   {"cmd":"current_viz","enable":true,"speed":2.0}  // on, double speed
+    //   {"cmd":"current_viz","enable":false}             // off, restore frame
+    //
+    // Response: {"ok":true,"enabled":true,"speed":1.0}
+    if (!strcmp(cmd, "current_viz"))
+    {
+      bool  on    = req["enable"] | false;
+      float speed = req["speed"]  | 1.0f;
+      CurrentViz::enable(on, speed);
+      resp["ok"]      = true;
+      resp["enabled"] = on;
+      resp["speed"]   = speed;
       sendJson(replyTo, resp);
       return;
     }
