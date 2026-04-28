@@ -1,5 +1,5 @@
 from led_map import wokwi_node_to_led
-from wire_path import expand_manhattan
+from wire_path import expand_manhattan, expand_logical_path
 from logical_map import wokwi_node_to_logical, fmt_logical
 
 def _nodes_to_logical_points(nodes, drop_unmapped=True):
@@ -166,6 +166,18 @@ def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh
 
         a_node, b_node = c[0], c[1]
         color = c[2] if len(c) > 2 else ""
+        hints = c[3] if len(c) > 3 else []
+
+        # Derive per-wire path order from Wokwi routing hint:
+        #   hint starts with "v" → wire exits vertically first → draw horizontal first → "hv"
+        #   hint starts with "h" → wire exits horizontally first → draw vertical first → "vh"
+        wire_order = path_order
+        if hints:
+            first_hint = hints[0] if isinstance(hints, list) else hints
+            if isinstance(first_hint, str) and first_hint.startswith("v"):
+                wire_order = "vh"
+            elif isinstance(first_hint, str) and first_hint.startswith("h"):
+                wire_order = "hv"
 
         a = wokwi_node_to_logical(a_node)
         b = wokwi_node_to_logical(b_node)
@@ -189,16 +201,19 @@ def connections_to_logical_wires(connections, drop_unmapped=True, path_order="vh
         }
 
         # ---- full path (same section only) or endpoints ----
-        path_nodes = expand_manhattan(a_node, b_node, order=path_order)
+        involves_rail = w["a"][0] in ("T", "B") or w["b"][0] in ("T", "B")
+        path_nodes = expand_manhattan(a_node, b_node, order=wire_order)
         if path_nodes:
             pts = nodes_to_logical_points(path_nodes)
             if pts:
                 w["points"] = pts
             else:
                 w["points"] = [w["a"], w["b"]]
+        elif involves_rail:
+            # Rail connections: just blink both endpoints, no intermediate path
+            w["points"] = [w["a"], w["b"]]
         else:
-            # Cross-section wire — try to expand M1↔M2 path; fall back to
-            # endpoints only for rail↔M1, rail↔M2, or other combinations.
+            # Cross-section wire (M1↔M2): expand full path
             cross_pts = _expand_cross_m1_m2(w["a"], w["b"])
             w["points"] = cross_pts if cross_pts else [w["a"], w["b"]]
 

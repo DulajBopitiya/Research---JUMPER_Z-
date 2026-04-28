@@ -76,87 +76,68 @@ def expand_manhattan(a: str, b: str, order: str = "vh"):
 def expand_logical_path(a_log, b_log):
     """
     Generate a list of [section, row, col] logical points for cross-section paths.
-    Matches Wokwi v0 routing (vertical first from the first endpoint).
+    Rail↔M1 and Rail↔M2 paths: the rail col maps 1:1 to the M1/M2 col (no offset).
+    All intermediate rows at the junction column are filled to avoid visual gaps.
 
-    Supported pairs (both directions):
-      T  → M1  — rail drops at rail col, then horizontal in M1
-      M1 → T  — vertical up from M1 col to rail, then horizontal in rail
-      M2 → B  — vertical drop in M2, then horizontal in B
-      B  → M2 — horizontal in B to M2 col, then vertical up in M2
+      T  → M1  T(r_a,c_a) → M1(0..r_b, c_a) → horizontal M1(r_b, c_a..c_b)
+      M1 → T   horizontal M1(r_a, c_a..c_b) → M1(r_a..0, c_b) → T(r_b, c_b)
+      M2 → B   horizontal M2(r_a, c_a..c_b) → M2(r_a..4, c_b) → B(r_b, c_b)
+      B  → M2  B(r_a,c_a) → M2(4..r_b, c_a) → horizontal M2(r_b, c_a..c_b)
 
-    Rail columns are 0-24; M1/M2 columns are 0-29.
-
+    Rail columns: 0-24.  M1/M2 columns: 0-29.
     Returns None if the pair is not a supported cross-section combination.
     """
     sec_a, r_a, c_a = a_log
     sec_b, r_b, c_b = b_log
-
     pts = []
 
-    # ── T → M1 (rail is first endpoint) ──────────────────────────────────────
-    # v0: vertical from rail col c_a down into M1, then horizontal in M1 to c_b
+    # ── T → M1 ──────────────────────────────────────────────────────────────────
+    # Rail at T col c_a sits above M1 col c_a (1:1 column alignment).
+    # Drop through M1 rows 0..r_b at that column, then go horizontal to c_b.
     if sec_a == "T" and sec_b == "M1":
         pts.append(["T", r_a, c_a])
-        # If on positive rail, also cross negative rail row at same col
-        if r_a == 0:
-            pts.append(["T", 1, c_a])
-        # Drop into M1 at c_a from row 0 down to r_b
-        for r in range(0, r_b + 1):
+        for r in range(0, r_b + 1):           # rows 0 … r_b at c_a
             pts.append(["M1", r, c_a])
-        # Horizontal in M1 at r_b from c_a to c_b
-        step = 1 if c_b >= c_a else -1
-        for c in range(c_a + step, c_b + step, step):
-            pts.append(["M1", r_b, c])
+        if c_b != c_a:
+            step = 1 if c_b > c_a else -1
+            for c in range(c_a + step, c_b + step, step):
+                pts.append(["M1", r_b, c])
         return pts
 
-    # ── M1 → T (M1 is first endpoint) ────────────────────────────────────────
-    # v0: vertical from M1 col c_a up through M1 to rail, then horizontal in rail
+    # ── M1 → T ──────────────────────────────────────────────────────────────────
+    # Go horizontal in M1 from c_a to c_b, then rise through rows r_a..0, then rail.
     if sec_a == "M1" and sec_b == "T":
-        # Rise from r_a up to row 0 in M1 at c_a
-        for r in range(r_a, -1, -1):
-            pts.append(["M1", r, c_a])
-        # Enter negative rail at c_a
-        pts.append(["T", 1, c_a])
-        # If destination is positive rail, also cross to positive
-        if r_b == 0:
-            pts.append(["T", 0, c_a])
-        # Horizontal in T at r_b from c_a to c_b
-        step = 1 if c_b >= c_a else -1
-        for c in range(c_a + step, c_b + step, step):
-            pts.append(["T", r_b, c])
+        if c_a != c_b:
+            step = 1 if c_b > c_a else -1
+            for c in range(c_a, c_b, step):   # up to but not including c_b
+                pts.append(["M1", r_a, c])
+        for r in range(r_a, -1, -1):          # rows r_a … 0 at c_b
+            pts.append(["M1", r, c_b])
+        pts.append(["T", r_b, c_b])
         return pts
 
-    # ── M2 → B (M2 is first endpoint) ────────────────────────────────────────
-    # v0: vertical down in M2 at c_a (capped to rail range), then horizontal in B
+    # ── M2 → B ──────────────────────────────────────────────────────────────────
+    # Go horizontal in M2 from c_a to c_b, then descend through rows r_a..4, then rail.
     if sec_a == "M2" and sec_b == "B":
-        c_rail = min(c_a, 24)
-        if c_a > 24:
-            for c in range(c_a, c_rail - 1, -1):
+        if c_a != c_b:
+            step = 1 if c_b > c_a else -1
+            for c in range(c_a, c_b, step):   # up to but not including c_b
                 pts.append(["M2", r_a, c])
-        else:
-            pts.append(["M2", r_a, c_a])
-        for r in range(r_a + 1, 5):
-            pts.append(["M2", r, c_rail])
-        for r in range(0, r_b + 1):
-            pts.append(["B", r, c_rail])
-        step2 = 1 if c_b >= c_rail else -1
-        for c in range(c_rail + step2, c_b + step2, step2):
-            pts.append(["B", r_b, c])
+        for r in range(r_a, 5):               # rows r_a … 4 at c_b
+            pts.append(["M2", r, c_b])
+        pts.append(["B", r_b, c_b])
         return pts
 
-    # ── B → M2 (B is first endpoint) ─────────────────────────────────────────
-    # v0: horizontal in B from c_a to M2 col (capped), then vertical up in M2
+    # ── B → M2 ──────────────────────────────────────────────────────────────────
+    # Rail at B col c_a sits below M2 col c_a (1:1 column alignment).
+    # Rise through M2 rows 4..r_b at that column, then go horizontal to c_b.
     if sec_a == "B" and sec_b == "M2":
-        c_rail = min(c_b, 24)
-        step = 1 if c_rail >= c_a else -1
-        for c in range(c_a, c_rail + step, step):
-            pts.append(["B", r_a, c])
-        if r_a == 0:
-            pts.append(["B", 1, c_rail])
-        for r in range(4, r_b - 1, -1):
-            pts.append(["M2", r, c_rail])
-        if c_b > 24:
-            for c in range(c_rail + 1, c_b + 1):
+        pts.append(["B", r_a, c_a])
+        for r in range(4, r_b - 1, -1):       # rows 4 … r_b at c_a
+            pts.append(["M2", r, c_a])
+        if c_b != c_a:
+            step = 1 if c_b > c_a else -1
+            for c in range(c_a + step, c_b + step, step):
                 pts.append(["M2", r_b, c])
         return pts
 

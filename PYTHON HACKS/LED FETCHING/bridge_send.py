@@ -8,10 +8,14 @@ VID_TOKEN = "1D51"
 PID_TOKEN = "ACAB"
 
 # Windows/pyserial output shows:
-#   LOCATION=...:x.0  (debug)
-#   LOCATION=...:x.2  (bridge)
+#   LOCATION=...:x.0  (debug   — CDC 0, "JZ Serial")
+#   LOCATION=...:x.2  (bridge  — CDC 1, "JZ NETSH")
+#   LOCATION=...:x.4  (ttl     — CDC 2, "JZ TTL"  → Nano)
+#   LOCATION=...:x.6  (osc/fn  — CDC 3, "JZ Oscilloscope" → STM32 via ESP32)
 DEBUG_LOC_SUFFIX = "X.0"
 BRIDGE_LOC_SUFFIX = "X.2"
+TTL_LOC_SUFFIX = "X.4"
+OSC_LOC_SUFFIX = "X.6"
 
 
 def _upper(x):
@@ -45,6 +49,32 @@ def find_ports():
             bridge_port = p.device
 
     return debug_port, bridge_port
+
+
+def find_osc_port():
+    """Return the COM string of the OSC_FUN_PORT (CDC 3, "JZ Oscilloscope").
+
+    This is the transparent byte pipe to the STM32 via the ESP32-S3.  Returns
+    None if the port isn't enumerated (some Windows installs drop CDC 3).
+    """
+    for p in serial.tools.list_ports.comports():
+        hwid = _upper(getattr(p, "hwid", ""))
+        if VID_TOKEN not in hwid or PID_TOKEN not in hwid:
+            continue
+        if _loc_suffix(hwid) == OSC_LOC_SUFFIX:
+            return p.device
+    return None
+
+
+def find_ttl_port():
+    """Return the COM string of the Nano TTL port (CDC 2, "JZ TTL"), or None."""
+    for p in serial.tools.list_ports.comports():
+        hwid = _upper(getattr(p, "hwid", ""))
+        if VID_TOKEN not in hwid or PID_TOKEN not in hwid:
+            continue
+        if _loc_suffix(hwid) == TTL_LOC_SUFFIX:
+            return p.device
+    return None
 
 
 def send_json_line(port: str, payload: dict, baud: int = 115200):

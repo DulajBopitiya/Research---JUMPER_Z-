@@ -4,9 +4,13 @@ measure.py — JumperZ INA219 voltage / current measurement tool.
 
 INA219 connection via Chip L crosspoint:
   Chip L X0 = ISENSE_MINUS = IN−  ← bus voltage measured here (V(node))
-  Chip L X1 = ISENSE_PLUS  = IN+  ← shunt high-side (current mode only)
+  Chip L X1 = ISENSE_PLUS  = IN+  ← shunt high-side
 
 Voltage mode  (default):  node → ISENSE_MINUS  → bus_v = V(node)
+Diff mode     (--node2):  two-pass: measure V(node) then V(node2) via bus-V ADC
+                           → node_v = V(node vs GND), node2_v = V(node2 vs GND)
+                           → diff_v = node2_v − node_v
+                           Range: 0–32 V, resolution: 4 mV. No ±320 mV limit.
 Current mode  (--plus):   plus → ISENSE_PLUS, node → ISENSE_MINUS
                            → bus_v = V(node), current_ma = shunt_mV / R_shunt
 
@@ -14,6 +18,8 @@ Usage:
   python measure.py TOP_17                          single voltage reading
   python measure.py TOP_17 -c                       continuous voltage (Ctrl+C)
   python measure.py TOP_17 -c --interval 0.2        faster loop
+  python measure.py TOP_17 --node2 TOP_14           differential: V(TOP_14)−V(TOP_17)
+  python measure.py TOP_17 --node2 TOP_14 -c        continuous differential
   python measure.py TOP_17 --plus 5V                current measurement
   python measure.py TOP_17 --plus 5V -c             continuous current
   python measure.py TOP_17 --plus 5V --guided       two-pass: baseline then load
@@ -71,10 +77,19 @@ class BoardConn:
 # ---------------------------------------------------------------------------
 
 def _measure(conn: BoardConn, node: str,
-             plus: str = None, sensor: int = 0) -> dict:
-    payload = {"cmd": "measure", "node": node.upper(), "sensor": sensor}
-    if plus:
-        payload["plus"] = plus.upper()
+             plus: str = None, node2: str = None, sensor: int = 0) -> dict:
+    """Single-node voltage or current measurement.
+    If node2 is provided, uses measure_diff (two-pass bus-voltage, 0–32V range).
+    If plus is provided, uses current mode (shunt register).
+    """
+    if node2:
+        # Two-pass absolute differential: not limited to ±320mV shunt range
+        payload = {"cmd": "measure_diff",
+                   "node": node.upper(), "node2": node2.upper(), "sensor": sensor}
+    else:
+        payload = {"cmd": "measure", "node": node.upper(), "sensor": sensor}
+        if plus:
+            payload["plus"] = plus.upper()
     return conn.send(payload)
 
 
@@ -96,6 +111,25 @@ def _print_full(resp: dict):
         return
 
     mode = _mode_label(resp)
+    if mode == "diff":
+        method = resp.get("method", "shunt")
+        twopass = (method == "twopass")
+        print(f"\n  Node      : {resp['node']}   (reference)")
+        print(f"  Node2     : {resp['node2']}   (measured)")
+        print(f"  Sensor    : INA219 #{resp['sensor']}  [diff — {'two-pass bus-V' if twopass else 'shunt register ±320mV'}]")
+        print(f"  {'─'*44}")
+        node_v  = float(resp['node_v'])
+        node2_v = float(resp['node2_v'])
+        diff_mv = float(resp['diff_mv'])
+        diff_v  = float(resp.get('diff_v', diff_mv / 1000.0))
+        print(f"  V({resp['node']:<12}) : {node_v:>10.4f}  V")
+        print(f"  V({resp['node2']:<12}) : {node2_v:>10.4f}  V")
+        print(f"  ΔV (node2−node)  : {diff_v:>10.4f}  V  ({diff_mv:+.2f} mV)")
+        if not twopass:
+            print(f"  NOTE: shunt register ±320 mV limit — use measure_diff for large drops")
+        print()
+        return
+
     print(f"\n  Node      : {resp['node']}")
     if mode == "current":
         print(f"  Plus      : {resp.get('plus','')}  →  ISENSE+")
@@ -117,9 +151,16 @@ _ROW_V = "  {:<12}  {:>10.4f} V  {:>6}"
 _HDR_I = "  {:<12}  {:>12}  {:>12}  {:>12}  {:>12}"
 _ROW_I = "  {:<12}  {:>10.4f} V  {:>9.4f}mV  {:>9.4f}mA  {:>9.4f}mW"
 
-def _print_header(current_mode: bool):
-    if current_mode:
+_HDR_D = "  {:<12}  {:<12}  {:>12}  {:>12}  {:>12}"
+_ROW_D = "  {:<12}  {:<12}  {:>9.4f} V  {:>9.4f} V  {:>+9.4f}mV"
+
+
+def _print_header(mode: str):
+    if mode == "current":
         print(_HDR_I.format("Node", "Voltage", "Shunt mV", "Current mA", "Power mW"))
+        print("  " + "-" * 72)
+    elif mode == "diff":
+        print(_HDR_D.format("Node", "Node2", "V(node)", "V(node2)", "ΔV (mV)"))
         print("  " + "-" * 72)
     else:
         print(_HDR_V.format("Node", "Voltage", ""))
@@ -140,6 +181,16 @@ def _print_row(resp: dict, count: int):
             float(resp["current_ma"]),
             float(resp["power_mw"]),
         ))
+    elif mode == "diff":
+        diff_mv = float(resp["diff_mv"])
+        diff_v  = float(resp.get("diff_v", diff_mv / 1000.0))
+        print(prefix + _ROW_D.format(
+            resp["node"],
+            resp["node2"],
+            float(resp["node_v"]),
+            float(resp["node2_v"]),
+            diff_mv,
+        ))
     else:
         print(prefix + _ROW_V.format(
             resp["node"],
@@ -152,8 +203,8 @@ def _print_row(resp: dict, count: int):
 # Modes
 # ---------------------------------------------------------------------------
 
-def do_single(conn, node, plus, sensor, as_json=False):
-    resp = _measure(conn, node, plus, sensor)
+def do_single(conn, node, plus=None, node2=None, sensor=0, as_json=False):
+    resp = _measure(conn, node, plus=plus, node2=node2, sensor=sensor)
     if as_json:
         print(json.dumps(resp, indent=2))
     else:
@@ -161,19 +212,21 @@ def do_single(conn, node, plus, sensor, as_json=False):
     return resp.get("ok", False)
 
 
-def do_continuous(conn, node, plus, sensor, interval=0.5):
-    current_mode = bool(plus)
+def do_continuous(conn, node, plus=None, node2=None, sensor=0, interval=0.5):
+    mode = "diff" if node2 else ("current" if plus else "voltage")
     desc = f"node={node!r}"
-    if current_mode:
+    if node2:
+        desc += f"  node2={node2!r}"
+    elif plus:
         desc += f"  plus={plus!r}"
     print(f"  Continuous — {desc}  sensor={sensor}  interval={interval}s")
     print(f"  Ctrl+C to stop (netlist will be restored automatically)\n")
 
-    _print_header(current_mode)
+    _print_header(mode)
     count = 0
     try:
         while True:
-            resp = _measure(conn, node, plus, sensor)
+            resp = _measure(conn, node, plus=plus, node2=node2, sensor=sensor)
             count += 1
             _print_row(resp, count)
             time.sleep(interval)
@@ -341,13 +394,15 @@ def do_clear(conn):
 def interactive_mode(conn):
     print("JumperZ Measurement — Interactive Mode")
     print("  Commands:")
-    print("    <node>                         voltage at node  (e.g.  TOP_17)")
-    print("    <node> --plus <src>            current from src through node")
-    print("    loop <node> [--plus <src>]     continuous until Ctrl+C")
-    print("    guided <node> [--plus <src>]   two-pass: baseline then load")
-    print("    autodiff <node> [--plus <src>] auto-detect toggling signal")
-    print("    clear                          restore netlist brightness")
-    print("    q                              quit (auto-restores)\n")
+    print("    <node>                              voltage at node  (e.g.  TOP_17)")
+    print("    <node> --node2 <node2>              differential: V(node2)−V(node)")
+    print("    <node> --plus <src>                 current from src through node")
+    print("    loop <node> [--node2 <n>|--plus <s>]  continuous until Ctrl+C")
+    print("    diff <node> <node2>                 shorthand for differential")
+    print("    guided <node> [--plus <src>]        two-pass: baseline then load")
+    print("    autodiff <node> [--plus <src>]      auto-detect toggling signal")
+    print("    clear                               restore netlist brightness")
+    print("    q                                   quit (auto-restores)\n")
 
     while True:
         try:
@@ -364,26 +419,35 @@ def interactive_mode(conn):
             do_clear(conn)
             continue
 
-        # simple tokenise: [loop|guided|autodiff] <node> [--plus <node>] [--sensor N]
+        # simple tokenise: [loop|guided|autodiff|diff] <node> [--node2 <n>] [--plus <n>] [--sensor N]
         tokens = raw.split()
         verb = tokens[0].lower()
         continuous = verb == "loop"
         guided     = verb == "guided"
         autodiff   = verb == "autodiff"
+        shortdiff  = verb == "diff"
 
-        if continuous or guided or autodiff:
+        if continuous or guided or autodiff or shortdiff:
             tokens = tokens[1:]
 
         if not tokens:
-            print("  usage: [loop|guided|autodiff] <node> [--plus <node>] [--sensor 0|1]")
+            print("  usage: [loop|guided|autodiff|diff] <node> [--node2 <n>] [--plus <n>] [--sensor 0|1]")
             continue
 
         node   = tokens[0]
         plus   = None
+        node2  = None
         sensor = 0
         i = 1
+
+        # shorthand: diff <node> <node2>  (positional node2)
+        if shortdiff and i < len(tokens) and not tokens[i].startswith("--"):
+            node2 = tokens[i]; i += 1
+
         while i < len(tokens):
-            if tokens[i] == "--plus" and i + 1 < len(tokens):
+            if tokens[i] == "--node2" and i + 1 < len(tokens):
+                node2 = tokens[i + 1]; i += 2
+            elif tokens[i] == "--plus" and i + 1 < len(tokens):
                 plus = tokens[i + 1]; i += 2
             elif tokens[i] == "--sensor" and i + 1 < len(tokens):
                 try:   sensor = int(tokens[i + 1])
@@ -397,10 +461,12 @@ def interactive_mode(conn):
                 do_guided(conn, node, plus, sensor)
             elif autodiff:
                 do_autodiff(conn, node, plus, sensor)
-            elif continuous:
-                do_continuous(conn, node, plus, sensor)
+            elif continuous or (shortdiff and not node2):
+                do_continuous(conn, node, plus=plus, node2=node2, sensor=sensor)
+            elif shortdiff or node2:
+                _print_full(_measure(conn, node, node2=node2, sensor=sensor))
             else:
-                _print_full(_measure(conn, node, plus, sensor))
+                _print_full(_measure(conn, node, plus=plus, sensor=sensor))
         except Exception as e:
             print(f"  [error] {e}")
 
@@ -417,6 +483,8 @@ def main():
     )
     parser.add_argument("node", nargs="?",
                         help="Node to measure (e.g. TOP_17, NANO_D3, BOTTOM_5)")
+    parser.add_argument("--node2", default=None, metavar="NODE",
+                        help="Second node → ISENSE+ for differential voltage (V(node2)−V(node))")
     parser.add_argument("--plus", default=None, metavar="NODE",
                         help="Supply node → ISENSE+ for current measurement")
     parser.add_argument("--sensor", type=int, default=0, choices=[0, 1],
@@ -466,13 +534,15 @@ def main():
                 print("  Restoring netlist...")
                 do_clear(conn)
             elif args.continuous:
-                do_continuous(conn, args.node, args.plus, args.sensor,
-                              args.interval)
+                do_continuous(conn, args.node, plus=args.plus,
+                              node2=args.node2, sensor=args.sensor,
+                              interval=args.interval)
                 print("  Restoring netlist...")
                 do_clear(conn)
             else:
-                ok = do_single(conn, args.node, args.plus, args.sensor,
-                               args.json)
+                ok = do_single(conn, args.node, plus=args.plus,
+                               node2=args.node2, sensor=args.sensor,
+                               as_json=args.json)
                 if not ok:
                     sys.exit(1)
 
