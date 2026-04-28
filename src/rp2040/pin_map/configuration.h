@@ -13,6 +13,7 @@
 #include "../RGB_MATRIX/LED_PATTERNS/led_patterns.h"
 #include "measurements.h"
 #include "current_viz.h"
+#include "settings.h"
 
 
 

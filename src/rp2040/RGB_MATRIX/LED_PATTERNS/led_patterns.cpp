@@ -1,5 +1,6 @@
 #include "led_patterns.h"
 #include "../Led_Matrix.h"
+#include <math.h>
 
 namespace rgbPatterns {
 
@@ -238,6 +239,374 @@ void startup(Adafruit_NeoPixel &strip) {
         strip.clear();
         strip.show();
     }
+}
+
+// ── connectionSuccess — played when Bridge port (USBSer1) connects ────────
+//   Phase 1: green/teal comet sweeps across all 400 LEDs left→right (~400 ms)
+//   Phase 2: all LEDs burst to bright green-white then decay to off (~300 ms)
+void connectionSuccess(Adafruit_NeoPixel &strip) {
+    const int N    = LedMatrix::NUM_LEDS;
+    const int TAIL = 25;
+
+    // Phase 1 — comet sweep
+    for (int head = 0; head < N + TAIL; head++) {
+        strip.clear();
+        for (int t = 0; t < TAIL; t++) {
+            int idx = head - t;
+            if (idx < 0 || idx >= N) continue;
+            uint8_t bri = (uint8_t)(255 - t * 255 / TAIL);
+            // Teal-green: interpolate r=0→0, g=200→255, b=180→0 as bri increases
+            uint8_t r = 0;
+            uint8_t g = (uint8_t)((uint16_t)bri * 255 / 255);
+            uint8_t b = (uint8_t)((uint16_t)bri * 160 / 255);
+            strip.setPixelColor(idx, r, g, b);
+        }
+        strip.show();
+        delay(2);
+    }
+
+    // Phase 2 — burst: all LEDs snap to bright green-white
+    for (int i = 0; i < N; i++)
+        strip.setPixelColor(i, 80, 255, 120);
+    strip.show();
+    delay(60);
+
+    // Phase 2 — decay: fade out over ~300 ms in ~15 steps
+    for (int step = 15; step >= 0; step--) {
+        uint8_t scale = (uint8_t)(step * 255 / 15);
+        for (int i = 0; i < N; i++) {
+            strip.setPixelColor(i,
+                (uint8_t)((uint16_t)80  * scale / 255),
+                (uint8_t)((uint16_t)255 * scale / 255),
+                (uint8_t)((uint16_t)120 * scale / 255));
+        }
+        strip.show();
+        delay(20);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── connectionLost — played when Bridge port (USBSer1) disconnects ───────
+//   Phase 1: all LEDs snap to dim red simultaneously
+//   Phase 2: red drains outward from center — LEDs go dark column by column
+//   Phase 3: remaining LEDs fade to off
+void connectionLost(Adafruit_NeoPixel &strip) {
+    const int N = LedMatrix::NUM_LEDS;
+
+    // Phase 1 — snap all to red
+    for (int i = 0; i < N; i++)
+        strip.setPixelColor(i, 200, 0, 0);
+    strip.show();
+    delay(80);
+
+    // Phase 2 — drain: sweep a dark comet right→left, erasing the red
+    const int TAIL = 30;
+    for (int head = N + TAIL; head >= -1; head--) {
+        for (int t = 0; t < TAIL; t++) {
+            int idx = head + t;
+            if (idx < 0 || idx >= N) continue;
+            // Fade from red toward black as we recede
+            uint8_t bri = (uint8_t)(t * 255 / TAIL);
+            strip.setPixelColor(idx, (uint8_t)((uint16_t)200 * bri / 255), 0, 0);
+        }
+        // Clear pixels behind the tail
+        int clear_idx = head + TAIL;
+        if (clear_idx >= 0 && clear_idx < N)
+            strip.setPixelColor(clear_idx, 0, 0, 0);
+        strip.show();
+        delay(2);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscConnectedScopeWave — connect style 1 (default) ────────────────────
+//   Phase 1: bright green sine wave traces left→right across M1+M2 (~480 ms)
+//   Phase 2: M1+M2 burst to a green-white flash (~80 ms)
+//   Phase 3: fade out (~240 ms)
+void oscConnectedScopeWave(Adafruit_NeoPixel &strip) {
+    const int TOTAL_COLS = 60;   // M1 (30) + M2 (30) treated as one pane
+    const int BASELINE   = 2;    // middle row of 5
+    const int AMP        = 2;    // ±2 rows
+    const float CYCLES   = 2.0f; // sine cycles across the full pane
+
+    strip.clear();
+    strip.show();
+
+    // Phase 1 — scope trace sweep
+    for (int sweep = 0; sweep < TOTAL_COLS; sweep++) {
+        float phase = ((float)sweep / TOTAL_COLS) * CYCLES * 2.0f * 3.14159265f;
+        int   off   = (int)roundf(sinf(phase) * AMP);
+        int   row   = BASELINE - off;
+        if (row < 0) row = 0;
+        if (row > 4) row = 4;
+
+        bool mid2 = sweep >= 30;
+        int  col  = mid2 ? sweep - 30 : sweep;
+        uint16_t idx = mid2 ? LedMatrix::mid2Index((uint8_t)row, (uint8_t)col)
+                            : LedMatrix::mid1Index((uint8_t)row, (uint8_t)col);
+        if (idx != 0xFFFF) strip.setPixelColor(idx, 0, 255, 80);
+
+        strip.show();
+        delay(8);
+    }
+
+    // Phase 2 — flash entire M1+M2 in green-white
+    for (int col = 0; col < 30; col++) {
+        for (int row = 0; row < 5; row++) {
+            strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col),
+                                80, 255, 120);
+            strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col),
+                                80, 255, 120);
+        }
+    }
+    strip.show();
+    delay(80);
+
+    // Phase 3 — fade out
+    for (int step = 15; step >= 0; step--) {
+        uint8_t scale = (uint8_t)(step * 255 / 15);
+        uint8_t r = (uint8_t)((uint16_t)80  * scale / 255);
+        uint8_t g = (uint8_t)((uint16_t)255 * scale / 255);
+        uint8_t b = (uint8_t)((uint16_t)120 * scale / 255);
+        for (int col = 0; col < 30; col++) {
+            for (int row = 0; row < 5; row++) {
+                strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col),
+                                    r, g, b);
+                strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col),
+                                    r, g, b);
+            }
+        }
+        strip.show();
+        delay(15);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscConnectedComet — connect style 2 ──────────────────────────────────
+//   Phase 1: cyan-headed comet sweeps across all 400 LEDs left→right (~360 ms)
+//   Phase 2: M1+M2 burst to bright green (~60 ms)
+//   Phase 3: fade out (~165 ms)
+void oscConnectedComet(Adafruit_NeoPixel &strip) {
+    const int N    = LedMatrix::NUM_LEDS;
+    const int TAIL = 30;
+
+    // Phase 1 — comet sweep with cyan-to-green gradient
+    for (int head = 0; head < N + TAIL; head++) {
+        strip.clear();
+        for (int t = 0; t < TAIL; t++) {
+            int idx = head - t;
+            if (idx < 0 || idx >= N) continue;
+            uint8_t bri = (uint8_t)(255 - t * 255 / TAIL);
+            // Head=cyan(0,200,255), tail→green(0,255,80)
+            uint8_t g = (uint8_t)(200 + (uint16_t)((255 - 200) * t) / TAIL);
+            uint8_t b = (uint8_t)(255 - (uint16_t)(175 * t) / TAIL);
+            strip.setPixelColor(idx, 0,
+                (uint8_t)((uint16_t)g * bri / 255),
+                (uint8_t)((uint16_t)b * bri / 255));
+        }
+        strip.show();
+        delay(1);
+    }
+
+    // Phase 2 — green burst on M1+M2
+    for (int col = 0; col < 30; col++) {
+        for (int row = 0; row < 5; row++) {
+            strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col), 60, 255, 100);
+            strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col), 60, 255, 100);
+        }
+    }
+    strip.show();
+    delay(60);
+
+    // Phase 3 — fade
+    for (int step = 10; step >= 0; step--) {
+        uint8_t scale = (uint8_t)(step * 255 / 10);
+        uint8_t r = (uint8_t)((uint16_t)60  * scale / 255);
+        uint8_t g = (uint8_t)((uint16_t)255 * scale / 255);
+        uint8_t b = (uint8_t)((uint16_t)100 * scale / 255);
+        for (int col = 0; col < 30; col++) {
+            for (int row = 0; row < 5; row++) {
+                strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col), r, g, b);
+                strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col), r, g, b);
+            }
+        }
+        strip.show();
+        delay(15);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscConnectedRipple — connect style 3 ─────────────────────────────────
+//   A green wave expands outward from the M1↔M2 boundary across both panes.
+//   ~525 ms total.
+void oscConnectedRipple(Adafruit_NeoPixel &strip) {
+    strip.clear();
+    strip.show();
+
+    for (int step = 0; step < 35; step++) {
+        for (int col = 0; col < 30; col++) {
+            // M1 wave front advances right→left from col 29 (boundary)
+            int diffM1 = abs((29 - col) - step);
+            uint8_t briM1 = (diffM1 > 4) ? 0 : (uint8_t)(255 - diffM1 * 60);
+
+            // M2 wave front advances left→right from col 0 (boundary)
+            int diffM2 = abs(col - step);
+            uint8_t briM2 = (diffM2 > 4) ? 0 : (uint8_t)(255 - diffM2 * 60);
+
+            for (int row = 0; row < 5; row++) {
+                strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col),
+                                    0, briM1, (uint8_t)(briM1 / 4));
+                strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col),
+                                    0, briM2, (uint8_t)(briM2 / 4));
+            }
+        }
+        strip.show();
+        delay(15);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscConnectedMatrix — connect style 4 ─────────────────────────────────
+//   Falling green drops with white heads stream down M1+M2 columns,
+//   like Matrix-style code rain. ~750 ms total.
+void oscConnectedMatrix(Adafruit_NeoPixel &strip) {
+    int8_t dropPos[60];                       // 60 cols (M1 0..29, M2 30..59)
+    for (int i = 0; i < 60; i++) dropPos[i] = -1;
+
+    const int FRAMES   = 30;
+    const int FRAME_MS = 25;
+
+    for (int frame = 0; frame < FRAMES; frame++) {
+        // Spawn drops at random columns (stop spawning near the end)
+        if (frame < FRAMES - 8) {
+            for (int s = 0; s < 4; s++) {
+                int c = (int)random(60);
+                if (dropPos[c] < 0) dropPos[c] = 0;
+            }
+        }
+
+        strip.clear();
+        for (int col = 0; col < 60; col++) {
+            if (dropPos[col] < 0) continue;
+            bool mid2    = col >= 30;
+            int  dispCol = mid2 ? col - 30 : col;
+
+            // Trail of length 4: head bright white, tail fades to dim green
+            for (int t = 0; t < 4; t++) {
+                int row = dropPos[col] - t;
+                if (row < 0 || row > 4) continue;
+                uint8_t bri = (uint8_t)(255 - t * 60);
+                uint8_t r   = (t == 0) ? bri : 0;
+                uint8_t g   = bri;
+                uint8_t b   = (t == 0) ? bri : (uint8_t)(bri / 4);
+                uint16_t idx = mid2 ? LedMatrix::mid2Index((uint8_t)row, (uint8_t)dispCol)
+                                    : LedMatrix::mid1Index((uint8_t)row, (uint8_t)dispCol);
+                strip.setPixelColor(idx, r, g, b);
+            }
+            dropPos[col]++;
+            if (dropPos[col] > 7) dropPos[col] = -1;   // off-screen
+        }
+        strip.show();
+        delay(FRAME_MS);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscDisconnectedFlatline — disconnect style 1 (default) ───────────────
+//   Phase 1: amber flat-line on row 2 of M1+M2 (~150 ms)
+//   Phase 2: fade out (~240 ms)
+void oscDisconnectedFlatline(Adafruit_NeoPixel &strip) {
+    for (int col = 0; col < 30; col++) {
+        strip.setPixelColor(LedMatrix::mid1Index(2, (uint8_t)col), 220, 90, 0);
+        strip.setPixelColor(LedMatrix::mid2Index(2, (uint8_t)col), 220, 90, 0);
+    }
+    strip.show();
+    delay(150);
+
+    for (int step = 12; step >= 0; step--) {
+        uint8_t scale = (uint8_t)(step * 255 / 12);
+        uint8_t r = (uint8_t)((uint16_t)220 * scale / 255);
+        uint8_t g = (uint8_t)((uint16_t)90  * scale / 255);
+        for (int col = 0; col < 30; col++) {
+            strip.setPixelColor(LedMatrix::mid1Index(2, (uint8_t)col), r, g, 0);
+            strip.setPixelColor(LedMatrix::mid2Index(2, (uint8_t)col), r, g, 0);
+        }
+        strip.show();
+        delay(20);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscDisconnectedRedFade — disconnect style 2 ──────────────────────────
+//   Phase 1: M1+M2 snap to red (~100 ms)
+//   Phase 2: fade out (~260 ms)
+void oscDisconnectedRedFade(Adafruit_NeoPixel &strip) {
+    for (int col = 0; col < 30; col++) {
+        for (int row = 0; row < 5; row++) {
+            strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col), 220, 0, 0);
+            strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col), 220, 0, 0);
+        }
+    }
+    strip.show();
+    delay(100);
+
+    for (int step = 12; step >= 0; step--) {
+        uint8_t scale = (uint8_t)(step * 255 / 12);
+        uint8_t r = (uint8_t)((uint16_t)220 * scale / 255);
+        for (int col = 0; col < 30; col++) {
+            for (int row = 0; row < 5; row++) {
+                strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col), r, 0, 0);
+                strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col), r, 0, 0);
+            }
+        }
+        strip.show();
+        delay(20);
+    }
+
+    strip.clear();
+    strip.show();
+}
+
+// ── oscDisconnectedDrain — disconnect style 3 ────────────────────────────
+//   Phase 1: amber across full M1+M2 (~80 ms)
+//   Phase 2: drain from outer edges inward toward the M1↔M2 boundary (~300 ms)
+void oscDisconnectedDrain(Adafruit_NeoPixel &strip) {
+    for (int col = 0; col < 30; col++) {
+        for (int row = 0; row < 5; row++) {
+            strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)col), 200, 80, 0);
+            strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)col), 200, 80, 0);
+        }
+    }
+    strip.show();
+    delay(80);
+
+    for (int step = 0; step < 30; step++) {
+        // M1: extinguish col `step` (left→right toward the boundary at col 29)
+        // M2: extinguish col `29 - step` (right→left toward the boundary at col 0)
+        for (int row = 0; row < 5; row++) {
+            strip.setPixelColor(LedMatrix::mid1Index((uint8_t)row, (uint8_t)step),       0, 0, 0);
+            strip.setPixelColor(LedMatrix::mid2Index((uint8_t)row, (uint8_t)(29 - step)), 0, 0, 0);
+        }
+        strip.show();
+        delay(10);
+    }
+
+    strip.clear();
+    strip.show();
 }
 
 }  // namespace rgbPatterns

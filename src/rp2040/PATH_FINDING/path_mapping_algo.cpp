@@ -1,7 +1,7 @@
 #include "path_mapping_algo.h"
 
 // the way the breadboard is connected to the chips, we can easily map each node to a chip. This is used for pathfinding and mapping the LEDs to the breadboard nodes.
-const int bbNodesToChip[62] = {
+const int bbNodesToChip[61] = {
     -1,CHIP_L, // 0,1
     CHIP_A,CHIP_A,CHIP_A,CHIP_A,CHIP_A,CHIP_A,CHIP_A, // 2, 3, 4, 5, 6, 7, 8
     CHIP_B,CHIP_B,CHIP_B,CHIP_B,CHIP_B,CHIP_B,CHIP_B, // 9,10,11,12,13,14,15
@@ -319,15 +319,32 @@ SFmapPair sfMappings[200] = {
         {"EXT_PIN_35", 158},
 
         //osciallscope and function generator debug definitions
-        {"ESP_REST", 160},
-        {"OSC_PROBE", 161},
-        {"SQUARE_WAVE_FUN", 162},
-        {"SINE_TRANG_FUN", 164},
-        {"EXTRA_1", 165,},
-        {"EXTRA_2", 166},
-        {"EXTRA_3", 167},
+        // ── Chip K X-pins (probe / function-gen outputs) ──────────────────
+        // X8  = OSC_PROBE      (master scope probe)         → 161
+        // X9  = EXT_GND        (external GND clip)          → 162
+        // X10 = SQUARE_WAVE_FUN(function-gen square wave)   → 163
+        // X11 = SINE_TRANG_FUN (function-gen sine/triangle) → 164
+        // X12 = EXTRA_1        (3.3V-range scope probe)     → 165
+        // X13 = EXTRA_2        (5V-range scope probe)       → 166
+        // X14 = EXTRA_3                                     → 167
+        {"ESP_REST",        122},   // Chip I X11 / Chip K X7 — ESP32 reset line
+        {"OSC_PROBE",       161},
+        {"MASTER_PROBE",    161},   // friendly alias
+        {"EXT_GND",         162},
+        {"EXTERNAL_GND",    162},   // friendly alias
+        {"SQUARE_WAVE_FUN", 163},   // FIX: was 162 (collided with EXT_GND)
+        {"SQUARE_WAVE",     163},   // friendly alias
+        {"SINE_TRANG_FUN",  164},
+        {"SINE_WAVE",       164},   // friendly alias
+        {"TRIANGLE_WAVE",   164},   // friendly alias
+        {"EXTRA_1",         165},
+        {"PROBE_3V3",       165},   // 3.3V-range scope probe
+        {"PROBE_3.3V",      165},   // friendly alias
+        {"EXTRA_2",         166},
+        {"PROBE_5V",        166},   // 5V-range scope probe
+        {"EXTRA_3",         167},
 
-        {"ESP_REST" , 168},
+        {"ESP_RST",   168},   // inbuilt ESP reset (separate from ESP_REST=122)
 
         // Breadboard top rows: "TOP_1".."TOP_30" → node numbers 1..30
         {"TOP_1",  1},  {"TOP_2",  2},  {"TOP_3",  3},  {"TOP_4",  4},  {"TOP_5",  5},

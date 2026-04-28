@@ -106,6 +106,20 @@ public:
     static bool frameHasSnapshot();
     static void frameClearSnapshot();   // discard saved snapshot
 
+    // Returns true if the given strip index has any non-zero colour in the
+    // framebuffer (path or endpoint).  Used by CurrentViz to restrict the
+    // animated comet to pixels that paintBridgeLeds actually painted.
+    static bool frameIsLit(int idx);
+
+    // Dump framebuffer to stream for debug.
+    // Outputs:
+    //   LED_DUMP_BEGIN\n
+    //   PATH:<2400 hex chars>\n   (path RGB for all 400 LEDs)
+    //   ENDP:<2400 hex chars>\n   (endpoint RGB for all 400 LEDs)
+    //   EP:<400 chars>\n          ('1' if endpoint, '0' otherwise)
+    //   LED_DUMP_END\n
+    static void frameDump(Stream &out);
+
 private:
     // IMPORTANT: defined ONLY ONCE in Led_Matrix.cpp
     static Adafruit_NeoPixel s_strip;

@@ -94,15 +94,20 @@ Commands are newline-terminated JSON sent to **USBSer1 ("JZ NETSH")**. Each comm
 | `{"cmd":"ping"}` | Returns device info and LED count |
 | `{"cmd":"clear"}` | Clears all LEDs + all CH446Q connections |
 | `{"cmd":"wokwi_wires","wires":[...]}` | LED-only visual path render (no switching) |
-| `{"cmd":"connect","nets":[{"nodes":["NANO_D3","TOP_5"],"color":"#0f0"},…]}` | Close physical CH446Q switches + light endpoints |
+| `{"cmd":"connect","nets":[{"nodes":["NANO_D3","TOP_5"],"color":"#0f0"},…]}` | Close physical CH446Q switches + light endpoints (full re-program — clears existing user nets) |
+| `{"cmd":"probe_connect","nets":[{"nodes":["OSC_PROBE","TOP_5"]},…]}` | Same payload shape as `connect` but **non-destructive**: replaces only the previously-routed probe nets; existing user nets keep their LED paint and CH446Q routing. Pass empty `nets:[]` for probe-only clear. Backed by `s_probeNetIdx[16]` slot tracker in `json_bridge.cpp`. |
 | `{"cmd":"netlist_query"}` | Return current path state (capped at 32 paths in JSON) |
 | `{"cmd":"debug"}` | Dump chip map / paths / nets as text, then JSON ACK |
 | `{"cmd":"debug","what":"summary"\|"chips"\|"paths"\|"nets"}` | Scoped debug dump |
 | `{"cmd":"measure","node":"TOP_5"}` | Voltage-only: node→ISENSE_MINUS, returns bus_v = V(node) |
 | `{"cmd":"measure","node":"TOP_5","plus":"5V","sensor":0}` | Current mode: plus→ISENSE_PLUS, node→ISENSE_MINUS; returns V, I, P |
+| `{"cmd":"measure","node":"TOP_17","node2":"TOP_14"}` | Diff mode: node2→ISENSE_PLUS, node→ISENSE_MINUS; returns node_v, node2_v, diff_mv=V(node2)−V(node). INA219 shunt range ±320 mV. |
 | `{"cmd":"measure_clear"}` | Restore full-brightness LED frame, remove measurement nets, discard snapshot |
 | `{"cmd":"current_viz","enable":true,"speed":1.0}` | Enable animated current-flow sparks — direction determined automatically from node potentials (GND=0V, 3.3V, 5V seeded; propagated through net graph) |
 | `{"cmd":"current_viz","enable":false}` | Disable animation and restore static frame |
+| `{"cmd":"settings"}` | Get all persistent settings (`brightness`, `conn_anim`, `disconn_anim`) |
+| `{"cmd":"settings","action":"set","brightness":80}` | Update one or more settings and persist to EEPROM; `brightness` applied immediately |
+| `{"cmd":"settings","action":"reset"}` | Restore factory defaults to EEPROM |
 
 Node names in `"connect"` and `"measure"` are resolved through `sfMappings[]` in `path_mapping_algo.cpp`. Any name not in that table returns an error in `"err_nodes"`.
 
@@ -230,13 +235,36 @@ The `{"cmd":"measure"}` JSON handler (in `json_bridge.cpp`) is **non-destructive
 
 Node names sent via `plus` and `node` fields are **case-sensitive** and must match `sfMappings[]` exactly (always uppercase, e.g., `"5V"` not `"5v"`).
 
+### Settings (`src/rp2040/SETTINGS/`)
+
+`Settings` namespace — persistent board configuration stored in the RP2040's **on-chip flash** via the earlephilhower `EEPROM` emulation library. No external I2C chip required. `EEPROM.begin(64)` allocates a 64-byte region; `EEPROM.put()` writes to the RAM buffer; `EEPROM.commit()` flushes to flash.
+
+`Settings::setup()` is the **first call** in `JumperZ_Setup()` so that `brightness` is available before `LedMatrix::begin()`. It does **not** touch Wire/I2C — `Measurements::setup()` owns Wire0 entirely.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `brightness` | uint8_t | 50 | Global LED strip brightness 0–255; passed to `LedMatrix::begin()` at boot and applied immediately on `set` |
+| `conn_anim` | bool | false | Whether the USB-connect LED animation plays; also initialises `s_animEnabled` in `JumperZ_SEQ` at boot |
+| `disconn_anim` | bool | false | Whether the USB-disconnect LED animation plays |
+| `osc_conn_style` | uint8_t | 1 | Oscilloscope plug-in animation. `0`=off, `1`=ScopeWave, `2`=Comet, `3`=Ripple, `4`=MatrixRain. Dispatched in `JumperZ_SEQ::JumperZ_Setup()` via the `UARTMainBridge::onOscEvent` callback. |
+| `osc_disconn_style` | uint8_t | 1 | Oscilloscope unplug animation. `0`=off, `1`=Flatline, `2`=RedFade, `3`=Drain. |
+
+Layout: `Config` struct (16 bytes, starts with `SETTINGS_MAGIC`) at byte offset `0x0000` within the 64-byte EEPROM region. Must not exceed 64 bytes total.
+
+Adding a new field: append before `_reserved[]`, shrink `_reserved` by the same byte count, and bump `SETTINGS_MAGIC` to force a one-time factory reset on next boot.
+
+Python tool: `Research---JUMPER_Z-/PYTHON HACKS/LED FETCHING/settings_tool.py` — interactive menu + CLI flags (`--get`, `--set KEY=VALUE`, `--reset`).
+
 ### Current Visualization (`src/rp2040/MEASUREMENTS/current_viz.h/.cpp`)
 
 `CurrentViz` namespace — animates a comet spark along each active net's bridge connections, flowing from high to low potential:
 
-- Voltage seeding: GND (node 100) = 0 V, 3.3V (node 103) = 3.3 V, 5V (node 105) = 5.0 V. Propagated through the net graph.
-- Bridges where both node voltages are unknown fall back to bidirectional animation.
-- Only breadboard nodes (TOP_1–30 → M1 row 0, BOTTOM_1–30 → M2 row 0) are drawn; non-LED nodes (GND, 5V, NANO, etc.) participate in voltage propagation only.
+- Voltage seeding: GND (node 100) = 0 V, 3.3V (node 103) = 3.3 V, 5V (node 105) = 5.0 V. Propagated through the net graph; direction determined via `s_from[]` (propagation source) rather than voltage difference (all nodes in a net settle to the same potential).
+- Bridges where direction is unknown (isolated from all supplies, or equal potentials) are **skipped entirely** — no bidirectional fallback.
+- Only breadboard nodes (TOP_1–30, BOTTOM_1–30) have LED positions; non-LED nodes (GND, 5V, NANO, etc.) participate in voltage propagation only.
+- The comet follows the **actual painted pixels** in the framebuffer (`frameIsLit`), not a hardcoded row:
+  - Same-section (TOP↔TOP or BOTTOM↔BOTTOM): `buildSameSectionPath` counts lit pixels per row across the full column span; the row with the most lit pixels is the wire body row.
+  - Cross-section (TOP↔BOTTOM): `buildCrossPath` walks all candidate pixels in paint order and keeps only those confirmed lit by `frameIsLit`.
 
 API:
 - `CurrentViz::enable(bool on, float speed)` — enable/disable; `speed=1.0` → ~750 ms full cycle.
@@ -259,9 +287,41 @@ JZDebug::printNets();          // all configured nets
 
 All functions accept a `Stream&` (default `Serial`). The `{"cmd":"debug"}` JSON handler sends output back to the caller (USBSer1) so Python can read it directly. Use the Python tool `debug_menu.py` for interactive access.
 
-### UART Bridge (RP2040 ↔ ESP32-S3)
+### UART Bridge (RP2040 ↔ ESP32-S3 ↔ STM32)
 
-RP2040 GPIO 16 (TX) / GPIO 17 (RX) → ESP32-S3 GPIO 18 (RX) / GPIO 19 (TX). Command: `"TOGGLE\n"` → ESP32-S3 toggles GPIO 40, responds `"OK\n"`.
+Fully transparent byte pipe between **USBSer2** (CDC 3, "JZ Oscilloscope" → `OSC_FUN_PORT` on the host) and the STM32 USART. No PING/PONG, no line framing — every byte is forwarded verbatim in both directions.
+
+```
+PC ─USB─► RP2040 USBSer2 ─PIO UART─► ESP32 UART0 ─► ESP32 UART1 ─► STM32 RX
+PC ◄─USB─ RP2040 USBSer2 ◄─PIO UART─ ESP32 UART0 ◄─ ESP32 UART1 ◄─ STM32 TX
+```
+
+| Hop | Wires |
+|-----|-------|
+| RP2040 ↔ ESP32-S3 (UART0) | RP GPIO 19 (TX) → ESP GPIO 44 (RX), RP GPIO 18 (RX) ← ESP GPIO 43 (TX). RP2040 side uses `SerialPIO` so Serial1 stays free for the Nano TTL bridge. |
+| ESP32-S3 (UART1) ↔ STM32 | ESP GPIO 46 (TX) → STM32 RX, ESP GPIO 45 (RX) ← STM32 TX. Pins also wired to Chip K crosspoints X4/X5. |
+
+Baud is 115200 8N1 throughout — adjust `STM_UART_BAUD` in `src/esp32s3/UART_BRIDGE/rp_stm_bridge.h` and the Python `--baud` flag together if the STM32 firmware uses a different rate.
+
+JSON helper on USBSer1: `{"cmd":"stm_cmd","data":"#A#"}` injects `data + '\n'` into the pipe. STM32 replies always come back on USBSer2 (`OSC_FUN_PORT`) — never USBSer1.
+
+Python helpers (in `Research---JUMPER_Z-/PYTHON HACKS/LED FETCHING/`):
+- `osc_bridge.py` — generic `--watch` / `--send` / `--interactive` byte-pipe CLI.
+- `osc_stream.py` — focused trigger-and-stream helper; default trigger is `#A#`.
+
+### Oscilloscope Module Hot-Plug Detection (`src/esp32s3/UART_BRIDGE/osc_detect.cpp`)
+
+The oscilloscope module mates via magnetic pogo pins that carry both power and the STM32 USART. `OscDetect` on the ESP32 uses the STM32 TX line itself as a presence signal:
+
+- An internal pulldown is set on **GPIO 45** (STM_UART_RX_PIN) via `gpio_set_pull_mode(GPIO_PULLDOWN_ONLY)`. This does not interfere with the UART1 routing — the STM32's push-pull TX easily drives the line HIGH at 115200 baud.
+- Sampled at ~200 Hz: any HIGH within the last **200 ms** → `CONNECTED`; only LOW for 200 ms → `DISCONNECTED`.
+- On state change, ESP32 injects a 5-byte sentinel into the UART0 stream toward the RP2040: `FE FD FE FD 01` (connected) or `FE FD FE FD 02` (disconnected). **No probe bytes are ever sent to the STM32** — detection is fully passive.
+- The RP2040 sniffs the ESP→USBSer2 path in `uart_main_bridge.cpp` and swallows the sentinel before it reaches Python. Real STM32 data starting with `FE FD FE FD <non-event>` is held briefly and forwarded intact.
+- On a connect/disconnect event the sniffer fires `UARTMainBridge::onOscEvent()`, which is wired in `JumperZ_SEQ.cpp` to play `rgbPatterns::oscConnected()` (green sine-wave sweep across M1+M2, ~800 ms) or `rgbPatterns::oscDisconnected()` (amber flat-line on row 2, ~400 ms).
+
+**Tradeoffs:**
+- The sentinel uses a 5-byte magic prefix; a binary STM32 stream could in theory contain `FE FD FE FD <01|02>` and trigger a false LED animation (~1 in 2^40 for random bytes — practically negligible).
+- LED patterns are blocking (~800 ms on connect). USBSer2 ↔ STM32 traffic pauses for that window. Acceptable since the STM32 has just (re)booted via the pogo pins and isn't streaming yet.
 
 ## Python Host Tools (`Research---JUMPER_Z-/PYTHON HACKS/LED FETCHING/`)
 
@@ -271,7 +331,7 @@ These run on the PC and communicate with the board over USB serial.
 |------|---------|
 | `main.py` | Fetch Wokwi diagram, build wire paths, send to board |
 | `measure.py` | CLI tool for INA219 measurement. Modes: continuous (`-n`), `--guided` (two-pass baseline/load corrected current), `--autodiff` (auto-cluster HIGH/LOW for toggling signals). `--samples N` controls sample count for autodiff. |
-| `current_viz.py` | Toggle current-flow LED animation (`--on`/`--off`/interactive). Imports `BoardConn` from `measure.py`. |
+| `current_viz.py` | Current-flow LED animation. Default (no flags): auto-detect all flows from netlist and start. `--on`/`--off` enable/disable without display. `--select` interactive segment picker. `--interactive` toggle menu. `--speed N` multiplier. Imports `BoardConn` from `measure.py`. |
 | `debug_menu.py` | Interactive terminal menu for `{"cmd":"debug"}` requests |
 | `bridge_send.py` | Low-level send helpers: `send_wokwi_wires()`, `send_connect_netlist()`, `send_connect_then_wires()` |
 | `netlist.py` | `build_nets()`, `build_jz_nets()` — group Wokwi connections into nets |
@@ -281,8 +341,24 @@ These run on the PC and communicate with the board over USB serial.
 | `led_map.py` | `wokwi_node_to_led()` — Wokwi node → LED strip index |
 | `led_diagnostic.py` | Physical LED layout verification tool (interactive, board must be connected) |
 | `wokwi_fetch.py` | Fetch `diagram.json` from a Wokwi project URL |
+| `OSC_FUN_MEASUREMENTS/probe_connect.py` | Route oscilloscope probes & function-generator outputs (Chip K X8–X13) to any board node. Flags: `--master`, `--3v3`, `--5v`, `--square`, `--sine`, `--ext-gnd NODE`, `--no-ext-gnd`, `--extra NODE NODE [NODE …]` (repeatable), `--clear` (probe-only clear), `--clear-all` (full board wipe), `--list`. By default the ext-GND clip is auto-tied to GND. Uses the **non-destructive** `probe_connect` JSON command — main.py / `connect` paths are preserved through probe routing changes. |
 
 Board auto-detection uses VID `1D51` / PID `ACAB`. Bridge port = USB location suffix `X.2` (USBSer1). Debug port = suffix `X.0` (Serial) — or no LOCATION at all on some Windows 11 machines. Cross-section wires (rail↔M1/M2) show endpoints only — no intermediate path. Same-section wires (M1↔M1, M2↔M2) use full Manhattan L-path.
+
+### Chip K Probe Pins (oscilloscope + function generator)
+
+The CH446Q Chip K crosspoint exposes 6 dedicated probe pins:
+
+| Chip K X | Node # | Primary name | Friendly aliases | Purpose |
+|----------|--------|---------------|------------------|---------|
+| X8 | 161 | `OSC_PROBE` | `MASTER_PROBE` | Master scope probe |
+| X9 | 162 | `EXT_GND` | `EXTERNAL_GND` | External GND clip |
+| X10 | 163 | `SQUARE_WAVE_FUN` | `SQUARE_WAVE` | Function-gen square output |
+| X11 | 164 | `SINE_TRANG_FUN` | `SINE_WAVE`, `TRIANGLE_WAVE` | Function-gen sine/triangle |
+| X12 | 165 | `EXTRA_1` | `PROBE_3V3`, `PROBE_3.3V` | 3.3V-range scope probe |
+| X13 | 166 | `EXTRA_2` | `PROBE_5V` | 5V-range scope probe |
+
+All names live in `sfMappings[]` in `path_mapping_algo.cpp` and are accepted by the `connect` and `measure*` JSON commands. **Historical bug fixed:** `SQUARE_WAVE_FUN` was previously mis-mapped to node 162 (collided with `EXT_GND`); `EXT_GND` was missing from `sfMappings[]` entirely. Both fixed and aliases added.
 
 ## Custom Board Definitions
 

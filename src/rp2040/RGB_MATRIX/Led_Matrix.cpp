@@ -311,6 +311,12 @@ void LedMatrix::frameClearSnapshot()
     s_haveSnapshot = false;
 }
 
+bool LedMatrix::frameIsLit(int idx)
+{
+    if (idx < 0 || idx >= (int)NUM_LEDS) return false;
+    return s_pathR[idx] || s_pathG[idx] || s_pathB[idx] || s_isEndpoint[idx];
+}
+
 void LedMatrix::frameDimAll(uint8_t factor)
 {
     for (int i = 0; i < (int)NUM_LEDS; i++) {
@@ -321,6 +327,41 @@ void LedMatrix::frameDimAll(uint8_t factor)
         s_endG[i]  = (uint8_t)((uint16_t)s_endG[i]  * factor / 255);
         s_endB[i]  = (uint8_t)((uint16_t)s_endB[i]  * factor / 255);
     }
+}
+
+
+//this is for debugging - dumps the current frame as text to the given stream (e.g. Serial)
+void LedMatrix::frameDump(Stream &out)
+{
+    static const char kHex[] = "0123456789ABCDEF";
+
+    out.print("LED_DUMP_BEGIN\n");
+
+    // PATH RGB (path colour for each LED)
+    out.print("PATH:");
+    for (int i = 0; i < (int)NUM_LEDS; i++) {
+        out.print(kHex[s_pathR[i] >> 4]); out.print(kHex[s_pathR[i] & 0xF]);
+        out.print(kHex[s_pathG[i] >> 4]); out.print(kHex[s_pathG[i] & 0xF]);
+        out.print(kHex[s_pathB[i] >> 4]); out.print(kHex[s_pathB[i] & 0xF]);
+    }
+    out.print('\n');
+
+    // ENDPOINT RGB
+    out.print("ENDP:");
+    for (int i = 0; i < (int)NUM_LEDS; i++) {
+        out.print(kHex[s_endR[i] >> 4]); out.print(kHex[s_endR[i] & 0xF]);
+        out.print(kHex[s_endG[i] >> 4]); out.print(kHex[s_endG[i] & 0xF]);
+        out.print(kHex[s_endB[i] >> 4]); out.print(kHex[s_endB[i] & 0xF]);
+    }
+    out.print('\n');
+
+    // ENDPOINT FLAGS ('1' = endpoint, '0' = path)
+    out.print("EP:");
+    for (int i = 0; i < (int)NUM_LEDS; i++)
+        out.print(s_isEndpoint[i] ? '1' : '0');
+    out.print('\n');
+
+    out.print("LED_DUMP_END\n");
 }
 
 void LedMatrix::frameTick()

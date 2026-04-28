@@ -6,4 +6,7 @@ namespace JumperZ_SEQUENCE
 {
     void JumperZ_Setup();
     void JumperZ_Loop();
+
+    void setAnimEnabled(bool en);
+    bool isAnimEnabled();
 }

@@ -108,8 +108,8 @@ struct chipStatus_BB_EXT
 
     const int16_t yMap[8];
 };
-/// Mapping from breadboard nodes to CH446Q chips. Indexed by bb node number (0-61).
-extern const int bbNodesToChip[62];
+/// Mapping from breadboard nodes to CH446Q chips. Indexed by bb node number (0-60).
+extern const int bbNodesToChip[61];
 
 enum pathType
 {

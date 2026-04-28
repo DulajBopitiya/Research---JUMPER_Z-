@@ -189,7 +189,18 @@ void findStartAndEndChips()
 
             } else if (nt == EXT) {
                 // Search chExt I, J for this external pin
-                path[i].candidates[nd][0] = findChipForEXTNode(node);
+                int extChip = findChipForEXTNode(node);
+                if (extChip >= 0) {
+                    path[i].candidates[nd][0] = extChip;
+                } else {
+                    // Probe / function-gen pins (OSC_PROBE, EXT_GND,
+                    // SQUARE_WAVE_FUN, SINE_TRANG_FUN, EXTRA_1..3) have
+                    // EXT-range node numbers but actually sit on Chip K's
+                    // xMap, not in chExt[]. Fall back to a full SF search
+                    // (chips I, J, K, L) so they resolve to Chip K instead
+                    // of -1 (which would mark the path SKIPPED).
+                    findAllChipsForSFNode(node, path[i].candidates[nd]);
+                }
             }
         }
     }
@@ -411,7 +422,12 @@ static int findFreeYOnChip(int chip)
 // Handles BB (Y lookup), NANO/SF (X lookup in ch[]), EXT (X lookup in chExt[]).
 static int resolveXForNode(int node, int chip, nodeType nt)
 {
-    if (nt == EXT) return xIndexForExtNodeOnChip(node, chip);
+    if (nt == EXT) {
+        int x = xIndexForExtNodeOnChip(node, chip);
+        if (x >= 0) return x;
+        // Probe / function-gen pins (Chip K) have EXT-range node numbers but
+        // sit in ch[chip].xMap, not chExt. Fall through to the regular search.
+    }
     return xIndexForNodeOnChip(node, chip);
 }
 

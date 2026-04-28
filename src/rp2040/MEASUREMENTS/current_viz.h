@@ -38,4 +38,18 @@ namespace CurrentViz
     // Call every iteration of JumperZ_Loop().
     // Internally rate-limited to ~33 fps; no-op when disabled.
     void tick();
+
+    // Bridge-pair filter — restrict animation to specific node pairs.
+    //
+    // pairs[] is a flat array of [n1a, n2a, n1b, n2b, ...].
+    // count is the number of pairs (so the array has 2*count elements).
+    // A bridge (n1, n2) is drawn only if the pair (n1,n2) or (n2,n1)
+    // appears in the list.  Matching is bidirectional.
+    //
+    // Call with count=0 (or setFilter(nullptr,0)) to clear the filter
+    // and animate every active bridge (default behaviour).
+    //
+    // Maximum 32 pairs; any extras are silently ignored.
+    void setFilter(const int *pairs, int count);
+    void clearFilter();
 }

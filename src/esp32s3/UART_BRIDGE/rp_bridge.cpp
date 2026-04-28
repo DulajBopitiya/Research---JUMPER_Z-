@@ -1,57 +1,27 @@
 #include "rp_bridge.h"
+#include "rp_stm_bridge.h"
 
-// UART1 instance — pins remapped in begin()
-static HardwareSerial rpUart(RP_UART_NUM);
-
-// ─────────────────────────────────────────────────────────────────────────────
+// UART0 — U0TXD (GPIO 43) / U0RXD (GPIO 44), wired to RP2040 GPIO 18/19
+static HardwareSerial rpUart(0);
 
 void RpBridge::begin() {
-    rpUart.begin(RP_UART_BAUD, SERIAL_8N1, RP_UART_RX_PIN, RP_UART_TX_PIN);
-    Serial.printf("[RpBridge] UART1 ready  RX=%d  TX=%d\n",
-                  RP_UART_RX_PIN, RP_UART_TX_PIN);
-
-    // Tell the RP2040 we are up — it will print this via UARTMainBridge::loop()
-    rpUart.println("READY");
+    rpUart.begin(RP_UART_BAUD, SERIAL_8N1, 44, 43);  // RX=44, TX=43
+    Serial.printf("[RpBridge] UART0 ready  RX=44 (U0RXD)  TX=43 (U0TXD)\n");
+    // No greeting is written to rpUart — UART0 is a raw byte pipe; any stray
+    // print would land on the STM32 verbatim and corrupt the stream.
 }
 
-void RpBridge::sendLine(const char* msg) {
-    rpUart.println(msg);
+void RpBridge::write(const uint8_t* buf, size_t len) {
+    rpUart.write(buf, len);
 }
 
-int RpBridge::available() {
-    return rpUart.available();
-}
-
-int RpBridge::read() {
-    return rpUart.read();
-}
-
-// ── private ───────────────────────────────────────────────────────────────────
-
-void RpBridge::handleLine(const String& line) {
-    Serial.print("[RP] ");
-    Serial.println(line);
-
-    // ── command dispatch ──────────────────────────────────────────────────────
-    if (line == "PING") {
-        rpUart.println("PONG");
-
-    } else if (line == "TOGGLE") {
-        // legacy — kept for compatibility with old RP2040 firmware
-        rpUart.println("OK");
-
-    } else {
-        // Unknown message — echo back so the RP2040 can detect dropped lines
-        rpUart.print("ACK:");
-        rpUart.println(line);
-    }
-}
+// ── byte passthrough: UART0 (RP2040)  →  UART1 (STM32) ───────────────────────
 
 void RpBridge::loop() {
-    while (rpUart.available()) {
-        String line = rpUart.readStringUntil('\n');
-        line.trim();
-        if (line.length() == 0) continue;
-        handleLine(line);
-    }
+    uint8_t buf[128];
+    int n = rpUart.available();
+    if (n <= 0) return;
+    if (n > (int)sizeof(buf)) n = sizeof(buf);
+    int got = rpUart.readBytes(buf, n);
+    if (got > 0) StmBridge::write(buf, got);
 }

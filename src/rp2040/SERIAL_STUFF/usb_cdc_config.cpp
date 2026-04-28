@@ -16,9 +16,12 @@ namespace USB_CDC_Config
     USBDevice.addStringDescriptor("FabVolt");
 
     // CDC 0 = Serial "JZ Serial"  — added automatically by framework before setup()
-    // CDC 1 = USBSer1 "JZ NETSH"
-    // CDC 2 = USBSer3 "JZ TTL"   ← Nano bridge (TTL_CDC_IDX = 2)
-    // CDC 3 = USBSer2 "JZ Oscilloscope"
+    // CDC 1 = USBSer1 "JZ NETSH"          ← JSON control channel
+    // CDC 2 = USBSer3 "JZ TTL"            ← Nano bridge (TTL_CDC_IDX = 2)
+    // CDC 3 = USBSer2 "JZ Oscilloscope"   ← OSC_FUN_PORT — transparent byte pipe
+    //                                       to the STM32 via the ESP32-S3 UART
+    //                                       bridge.  All oscilloscope /
+    //                                       function-generator traffic flows here.
     //
     // Set string BEFORE begin() so the patched begin() keeps it instead of
     // overriding with "JZ Serial". Do NOT call TinyUSBDevice.addInterface()
